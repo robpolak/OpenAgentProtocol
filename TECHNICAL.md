@@ -262,6 +262,65 @@ All schemas live in `schemas/v0.1/`. Versioned by major.minor. Reference by URL 
 
 ---
 
+## Workspace Directory (`.oa/`)
+
+Every project directory that uses the OAP CLI gets a `.oa/` workspace folder.
+Each plan run is stored in its own subdirectory identified by a UUID.
+
+```
+.oa/
+  .gitignore              keeps workflow files, ignores run artifacts
+  {uuid}/
+    workflow.yaml         the generated OAP workflow
+    state.jsonl           append-only lifecycle event log (JSONL)
+    run.log               structured runtime logs for the last run
+```
+
+### state.jsonl format
+
+Each line is a JSON object. Field names mirror the OAP `event.lifecycle` protocol.
+
+```json
+{"ts":"2026-03-06T14:23:00Z","event":"plan_created","guid":"abc-123","workflow_name":"dead-api-removal"}
+{"ts":"2026-03-06T14:24:00Z","event":"run_started","guid":"abc-123","pid":12345}
+{"ts":"2026-03-06T14:25:00Z","event":"task_started","task":"query-datadog","agent":"datadog-analyst"}
+{"ts":"2026-03-06T14:27:00Z","event":"task_completed","task":"query-datadog","status":"ok"}
+{"ts":"2026-03-06T14:30:00Z","event":"run_completed","status":"ok","cost_usd":0.42,"tokens_used":18400}
+```
+
+| Event | Written by | Meaning |
+|---|---|---|
+| `plan_created` | `oa plan` | Workflow YAML saved to `.oa/{guid}/` |
+| `run_started` | `oa run` | Coordinator started, PID recorded |
+| `task_started` | coordinator | Task dispatched to agent |
+| `task_completed` | coordinator | Task finished ok |
+| `task_failed` | coordinator | Task finished with error |
+| `run_completed` | `oa run` | Workflow finished successfully |
+| `run_failed` | `oa run` | Workflow finished with error |
+
+### Status derivation
+
+| Status | Condition |
+|---|---|
+| `pending` | `plan_created` exists, no `run_started` |
+| `running` | `run_started` exists, no terminal event |
+| `completed` | `run_completed` with `status: ok` |
+| `failed` | `run_failed` or `run_completed` with error |
+
+### Gitignore
+
+`oa` adds `.oa/` to the user's global gitignore on first run (`~/.config/git/ignore` or `~/.gitignore_global`). The `.oa/.gitignore` inside the folder additionally ignores `state.jsonl` and `run.log` per-plan, but not `workflow.yaml` — so you can commit workflows if you choose.
+
+### CLI commands
+
+```bash
+oa plan --template software_generic   # creates .oa/{guid}/workflow.yaml
+oa ls                                 # list all plans and their status
+oa run .oa/{guid}/workflow.yaml       # execute a plan, writes state events
+```
+
+---
+
 ## Project Structure
 
 ```
