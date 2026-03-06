@@ -1,0 +1,50 @@
+# DAG with conditional branching — different paths based on task output.
+oap_version: "0.1"
+kind: Workflow
+metadata:
+  name: incident-response
+
+agents:
+  - name: investigator
+    model: ${AGENT_MODEL}
+    tools: [shell, log_search, metrics_query]
+
+  - name: fixer
+    model: ${AGENT_MODEL}
+    tools: [shell, file_editor, test_runner]
+
+tasks:
+  - name: triage
+    agent: investigator
+    description: Analyze error logs and metrics to classify the incident
+    outputs:
+      - name: severity
+        type: string
+        enum: [low, medium, critical]
+      - name: root_cause
+        type: string
+
+  - name: hotfix
+    agent: fixer
+    needs: [triage]
+    when: tasks.triage.outputs.severity == "critical"
+    description: Apply minimal hotfix for ${tasks.triage.outputs.root_cause}
+    success_criteria:
+      - Error rate returns to baseline
+      - No new test failures
+
+  - name: standard-fix
+    agent: fixer
+    needs: [triage]
+    when: tasks.triage.outputs.severity != "critical"
+    description: Implement proper fix for ${tasks.triage.outputs.root_cause}
+    success_criteria:
+      - Root cause eliminated
+      - Full test suite passes
+      - Post-mortem notes written
+
+  - name: verify
+    agent: investigator
+    needs: [hotfix, standard-fix]
+    any_of: true  # runs after whichever branch completed
+    description: Confirm fix in production, verify metrics are healthy

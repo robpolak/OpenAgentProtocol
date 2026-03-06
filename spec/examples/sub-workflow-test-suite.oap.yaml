@@ -1,0 +1,40 @@
+# Sub-workflow — called via workflow_ref from a parent workflow.
+# Parent passes inputs when referencing this workflow.
+oap_version: "0.1"
+kind: Workflow
+metadata:
+  name: test-suite
+  description: Run a test suite and report results
+
+agents:
+  - name: tester
+    model: ${AGENT_MODEL}
+    tools: [shell, test_runner]
+    budget:
+      max_cost_usd: 5.00
+      on_exceed: stop
+
+tasks:
+  - name: run-tests
+    agent: tester
+    description: Run the project test suite and capture results
+    outputs:
+      - name: passed
+        type: boolean
+        required: true
+      - name: summary
+        type: markdown
+      - name: failed_tests
+        type: json
+
+  - name: analyze-failures
+    agent: tester
+    needs: [run-tests]
+    when: tasks.run-tests.outputs.passed == false
+    description: Analyze failing tests, classify as regression vs. expected failure
+    outputs:
+      - name: regressions
+        type: json
+      - name: recommendation
+        type: string
+        enum: [fix, skip, investigate]

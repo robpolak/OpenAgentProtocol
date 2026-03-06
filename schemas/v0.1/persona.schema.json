@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagentprotocol.dev/schemas/v0.1/persona.schema.json",
+  "title": "Persona",
+  "description": "Structured agent identity — who the agent is, how it behaves, what it knows. Replaces unstructured system prompts.",
+  "type": "object",
+  "required": ["role"],
+  "properties": {
+    "role": {
+      "type": "string",
+      "description": "What the agent IS. Freeform — roles are domain-specific. e.g. senior-engineer, security-reviewer, architect, qa-lead."
+    },
+    "expertise": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Domain knowledge areas. Used for task routing and prompt injection. e.g. [go, grpc, distributed-systems]."
+    },
+    "style": {
+      "$ref": "#/$defs/Style",
+      "description": "Communication and behavioral modifiers."
+    },
+    "constraints": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Constraint" },
+      "description": "Always-on rules baked into identity. Lightweight alternative to policies for simple invariants."
+    },
+    "context": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Domain-specific knowledge injected into agent context. Facts about the codebase, team conventions, architecture decisions."
+    },
+    "extends": {
+      "type": "string",
+      "description": "$ref to a base persona. Fields in this persona override the base. Enables composition: security-engineer extends base-engineer."
+    }
+  },
+  "patternProperties": {
+    "^x-": { "description": "Runtime-specific extensions." }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "Style": {
+      "type": "object",
+      "properties": {
+        "tone": {
+          "type": "string",
+          "enum": ["concise", "verbose", "technical", "conversational"],
+          "default": "concise",
+          "description": "Communication tone. concise = direct, no filler. verbose = explains reasoning. technical = jargon-heavy. conversational = casual."
+        },
+        "autonomy": {
+          "type": "string",
+          "enum": ["autonomous", "collaborative", "supervised"],
+          "default": "collaborative",
+          "description": "Decision-making mode. autonomous = decides and acts. collaborative = proposes and asks. supervised = waits for approval on every step."
+        },
+        "risk_tolerance": {
+          "type": "string",
+          "enum": ["conservative", "moderate", "aggressive"],
+          "default": "moderate",
+          "description": "How much risk the agent takes. conservative = smallest changes, always asks. aggressive = refactors freely, makes bold choices."
+        },
+        "explanation_depth": {
+          "type": "string",
+          "enum": ["minimal", "standard", "thorough"],
+          "default": "standard",
+          "description": "How much the agent explains its work. minimal = just does it. thorough = explains every decision."
+        }
+      },
+      "additionalProperties": false
+    },
+    "Constraint": {
+      "type": "object",
+      "required": ["type", "rule"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["never", "always", "prefer"],
+          "description": "Enforcement level. never = hard block. always = hard requirement. prefer = soft advisory."
+        },
+        "rule": {
+          "type": "string",
+          "description": "The rule in plain language. Injected into agent prompt and enforceable by runtime."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,269 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagentprotocol.dev/schemas/v0.1/messages/types.schema.json",
+  "title": "OAP Message Type Registry",
+  "description": "Defines well-known message types and their payload schemas. Runtimes MAY add custom types prefixed with their namespace.",
+  "type": "object",
+  "$defs": {
+
+    "signal.status": {
+      "description": "Agent reports current status. Fire-and-forget.",
+      "type": "object",
+      "required": ["state"],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": ["idle", "working", "blocked", "waiting", "done", "error"]
+        },
+        "message": { "type": "string" },
+        "progress": {
+          "type": "number", "minimum": 0, "maximum": 1,
+          "description": "0.0 to 1.0 completion estimate."
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "signal.output": {
+      "description": "Agent emits a named output value.",
+      "type": "object",
+      "required": ["name", "value"],
+      "properties": {
+        "name": { "type": "string" },
+        "value": {},
+        "type": { "type": "string", "description": "Output type for validation." }
+      },
+      "additionalProperties": false
+    },
+
+    "signal.log": {
+      "description": "Structured log entry from agent.",
+      "type": "object",
+      "required": ["level", "message"],
+      "properties": {
+        "level": { "type": "string", "enum": ["debug", "info", "warn", "error"] },
+        "message": { "type": "string" },
+        "context": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+
+    "request.task": {
+      "description": "Coordinator assigns a task to an agent.",
+      "type": "object",
+      "required": ["task_name", "description"],
+      "properties": {
+        "task_name": { "type": "string" },
+        "description": { "type": "string" },
+        "inputs": { "type": "object" },
+        "success_criteria": { "type": "array", "items": { "type": "string" } },
+        "file_scope": { "type": "array", "items": { "type": "string" } },
+        "timeout": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+
+    "request.query": {
+      "description": "Any party queries another for information. Expects response.result.",
+      "type": "object",
+      "required": ["query"],
+      "properties": {
+        "query": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+
+    "request.handoff": {
+      "description": "Agent hands off work to another agent.",
+      "type": "object",
+      "required": ["reason"],
+      "properties": {
+        "reason": { "type": "string" },
+        "context": { "type": "object", "description": "State to transfer." },
+        "history_filter": {
+          "type": "string",
+          "enum": ["all", "summary", "none"],
+          "default": "summary",
+          "description": "How much conversation history to forward."
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "request.approval": {
+      "description": "Agent requests approval before proceeding.",
+      "type": "object",
+      "required": ["action"],
+      "properties": {
+        "action": { "type": "string", "description": "What the agent wants to do." },
+        "details": { "type": "object" },
+        "timeout": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+
+    "response.result": {
+      "description": "Response to any request.",
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": { "type": "string", "enum": ["ok", "error", "rejected"] },
+        "data": {},
+        "error": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+
+    "response.ack": {
+      "description": "Simple acknowledgment. No data.",
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+
+    "event.lifecycle": {
+      "description": "System lifecycle event.",
+      "type": "object",
+      "required": ["event", "subject"],
+      "properties": {
+        "event": {
+          "type": "string",
+          "enum": [
+            "task_started", "task_completed", "task_failed",
+            "phase_started", "phase_completed",
+            "workflow_started", "workflow_completed", "workflow_failed",
+            "loop_iteration_complete", "loop_max_iterations_reached", "loop_exited"
+          ]
+        },
+        "subject": { "type": "string", "description": "Name of task/phase/workflow." },
+        "details": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+
+    "event.loop_iteration": {
+      "description": "Emitted after each loop iteration completes. Broadcast to all agents that can receive from coordinator.",
+      "type": "object",
+      "required": ["loop_subject", "iteration", "max_iterations"],
+      "properties": {
+        "loop_subject": { "type": "string", "description": "Name of the looping task or phase." },
+        "iteration": { "type": "integer", "minimum": 1, "description": "Iteration just completed (1-based)." },
+        "max_iterations": { "type": "integer", "description": "Upper bound from loop config." },
+        "outputs": { "type": "object", "description": "Named outputs from this iteration." },
+        "exit_triggered": { "type": "boolean", "description": "Whether exit_when evaluated to true, causing loop exit." }
+      },
+      "additionalProperties": false
+    },
+
+    "build.intent": {
+      "description": "Agent declares intent to modify files. Build coordination extension.",
+      "type": "object",
+      "required": ["files"],
+      "properties": {
+        "files": { "type": "array", "items": { "type": "string" }, "description": "File paths agent intends to edit." }
+      },
+      "additionalProperties": false
+    },
+
+    "build.ready": {
+      "description": "Agent finished editing, ready for build.",
+      "type": "object",
+      "properties": {
+        "files_changed": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+
+    "build.file_conflict": {
+      "description": "Coordinator notifies agent of a file ownership conflict.",
+      "type": "object",
+      "required": ["file", "owned_by", "resolution"],
+      "properties": {
+        "file": { "type": "string", "description": "Conflicted file path." },
+        "owned_by": { "type": "string", "description": "Agent that currently owns the file." },
+        "resolution": { "type": "string", "enum": ["first_writer_wins", "orchestrator_mediated", "sequential_access", "merge_attempt"] },
+        "action": { "type": "string", "description": "Suggested action for the receiving agent." }
+      },
+      "additionalProperties": false
+    },
+
+    "build.epoch_start": {
+      "description": "Coordinator signals epoch beginning. Agents must freeze edits.",
+      "type": "object",
+      "required": ["epoch_id"],
+      "properties": {
+        "epoch_id": { "type": "string" },
+        "deadline": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+
+    "build.build_started": {
+      "description": "Coordinator notifies agents that build is now running.",
+      "type": "object",
+      "required": ["epoch_id", "command"],
+      "properties": {
+        "epoch_id": { "type": "string" },
+        "command": { "type": "string", "description": "The build command being executed." }
+      },
+      "additionalProperties": false
+    },
+
+    "build.ack": {
+      "description": "Agent acknowledges epoch freeze.",
+      "type": "object",
+      "required": ["epoch_id"],
+      "properties": {
+        "epoch_id": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+
+    "build.result": {
+      "description": "Build/test outcome with error attribution.",
+      "type": "object",
+      "required": ["epoch_id", "status"],
+      "properties": {
+        "epoch_id": { "type": "string" },
+        "status": { "type": "string", "enum": ["passed", "failed", "timeout"] },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "file": { "type": "string" },
+              "line": { "type": "integer" },
+              "message": { "type": "string" },
+              "attributed_to": { "type": "string", "description": "Agent name responsible." }
+            },
+            "additionalProperties": false
+          }
+        },
+        "integration_errors": {
+          "type": "array",
+          "description": "Errors in files not owned by any agent (shared infra, generated files).",
+          "items": {
+            "type": "object",
+            "properties": {
+              "file": { "type": "string" },
+              "line": { "type": "integer" },
+              "message": { "type": "string" },
+              "attributed_to": { "type": ["string", "null"] }
+            },
+            "additionalProperties": false
+          }
+        },
+        "test_results": {
+          "type": "object",
+          "properties": {
+            "passed": { "type": "integer" },
+            "failed": { "type": "integer" },
+            "skipped": { "type": "integer" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

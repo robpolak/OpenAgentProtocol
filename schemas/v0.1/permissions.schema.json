@@ -1,0 +1,164 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagentprotocol.dev/schemas/v0.1/permissions.schema.json",
+  "title": "Permissions",
+  "description": "Security sandbox for agents. Declares what the agent is allowed to access. Runtimes MUST enforce.",
+  "type": "object",
+  "properties": {
+    "filesystem": {
+      "$ref": "#/$defs/FilesystemPermissions"
+    },
+    "network": {
+      "$ref": "#/$defs/NetworkPermissions"
+    },
+    "shell": {
+      "$ref": "#/$defs/ShellPermissions"
+    },
+    "secrets": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/SecretRef" },
+      "description": "Secret references available to this agent. Values resolved by runtime."
+    },
+    "communication": {
+      "$ref": "#/$defs/CommunicationPermissions"
+    },
+    "mcp": {
+      "$ref": "#/$defs/McpPermissions"
+    }
+  },
+  "patternProperties": {
+    "^x-": { "description": "Runtime-specific extensions." }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "FilesystemPermissions": {
+      "type": "object",
+      "properties": {
+        "allow_read": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Glob patterns the agent can read. ['*'] = unrestricted."
+        },
+        "allow_write": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Glob patterns the agent can write. Overrides file_scope if both present."
+        },
+        "deny": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Glob patterns explicitly blocked. Deny takes precedence over allow."
+        }
+      },
+      "additionalProperties": false
+    },
+    "NetworkPermissions": {
+      "type": "object",
+      "properties": {
+        "allow": {
+          "type": "string",
+          "enum": ["none", "restricted", "full"],
+          "default": "none",
+          "description": "none = no network. restricted = only allowed_hosts. full = unrestricted."
+        },
+        "allowed_hosts": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Hostnames/patterns allowed when network=restricted. e.g. ['api.github.com', '*.internal.corp']."
+        }
+      },
+      "additionalProperties": false
+    },
+    "ShellPermissions": {
+      "type": "object",
+      "properties": {
+        "allow": {
+          "type": "boolean",
+          "default": true,
+          "description": "Whether the agent can execute shell commands."
+        },
+        "allowed_commands": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Whitelist of allowed commands. Empty = all allowed (when allow=true)."
+        },
+        "blocked_commands": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Commands explicitly blocked. e.g. ['rm -rf', 'git push --force']."
+        }
+      },
+      "additionalProperties": false
+    },
+    "CommunicationPermissions": {
+      "type": "object",
+      "description": "Controls which agents this agent can communicate with. Omit for unrestricted. When set, runtimes MUST enforce — messages to/from unauthorized agents are dropped.",
+      "properties": {
+        "can_message": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Agent names (or 'coordinator', 'user', '*') this agent can send messages to. '*' = unrestricted."
+        },
+        "can_receive_from": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Agent names (or 'coordinator', 'user', '*') this agent can receive messages from. '*' = unrestricted."
+        },
+        "can_handoff_to": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Agent names this agent can hand off tasks to. Empty = handoff disabled."
+        }
+      },
+      "additionalProperties": false
+    },
+    "SecretRef": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Secret identifier. Referenced as ${secrets.<name>} in the workflow."
+        },
+        "source": {
+          "type": "string",
+          "enum": ["env", "vault", "file", "runtime"],
+          "default": "env",
+          "description": "Where the secret is resolved from. env = environment variable. vault = external secret manager. file = file on disk. runtime = runtime-provided."
+        },
+        "key": {
+          "type": "string",
+          "description": "Lookup key. For env: variable name. For vault: secret path. For file: file path."
+        },
+        "required": {
+          "type": "boolean",
+          "default": true,
+          "description": "If true, workflow fails if secret cannot be resolved."
+        }
+      },
+      "additionalProperties": false
+    },
+    "McpPermissions": {
+      "type": "object",
+      "description": "Controls which MCP servers and tools this agent can access. Omit for no MCP access. ['*'] grants access to all declared servers.",
+      "properties": {
+        "servers": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Names of mcp_servers this agent can connect to. References workflow.mcp_servers[].name. ['*'] = access to all declared servers. Empty or omitted = no MCP access."
+        },
+        "allow_tools": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Allowlist of specific MCP tools in 'server:tool_name' format. When set, agent can ONLY call these tools. Omit to allow all tools on permitted servers. e.g. ['github:search_repositories', 'postgres:query']."
+        },
+        "deny_tools": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Blocklist of specific MCP tools in 'server:tool_name' format. Deny takes precedence over allow_tools. Useful for excluding destructive operations. e.g. ['postgres:execute_write', 'github:delete_repository']."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

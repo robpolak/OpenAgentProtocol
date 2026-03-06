@@ -1,0 +1,133 @@
+oap_version: "0.1"
+kind: Workflow
+metadata:
+  name: loop-refinement
+  description: |
+    Write-test-fix cycle followed by a critic-drafter review loop.
+    Demonstrates multiple independent loops chained via needs.
+
+agents:
+  - name: coder
+    model_tier: standard
+    tools: [file_editor, shell]
+    output_format: structured
+    permissions:
+      filesystem:
+        allow_write: ["src/", "tests/"]
+        deny: [".env", "*.secret"]
+
+  - name: critic
+    model_tier: fast
+    output_format: structured
+
+  - name: writer
+    model_tier: standard
+    tools: [file_editor]
+    output_format: structured
+
+  - name: lead
+    model_tier: frontier
+    output_format: structured
+
+tasks:
+  # Loop 1: implementation with test feedback
+  # Runs until all tests pass or 6 iterations exhausted.
+  - name: implement
+    agent: coder
+    description: |
+      Implement the feature described in SPEC.md.
+
+      Iteration ${loop.iteration} of ${loop.max_iterations}.
+      Exit goal: all tests pass.
+
+      Previous iteration summary:
+      ${loop.previous_summary}
+
+      Run: make test
+      Write the implementation to src/feature.py.
+      Emit tests_pass=true when `make test` exits 0.
+    outputs:
+      - name: tests_pass
+        type: boolean
+        required: true
+      - name: loop_summary
+        type: string
+        required: true
+    loop:
+      max_iterations: 6
+      exit_when: "tasks.implement.outputs.tests_pass == true"
+      on_max_iterations: escalate
+      escalate_to: user
+      context:
+        strategy: fresh
+        inject_artifacts: true
+        summary_output: loop_summary
+      budget_per_iteration:
+        max_tokens: 60000
+        max_cost_usd: 2.50
+
+  # Loop 2: write-review refinement (runs after implement completes)
+  # Two parallel agents per iteration: writer drafts, critic scores.
+  # Exits when quality score >= 8 or 3 iterations exhausted.
+  - name: draft-doc
+    agent: writer
+    needs: [implement]
+    description: |
+      Write user-facing documentation for the feature.
+      Iteration ${loop.iteration} of ${loop.max_iterations}.
+      Critic feedback from last round: ${loop.previous_summary}
+    outputs:
+      - name: doc_draft
+        type: markdown
+        required: true
+    loop:
+      max_iterations: 3
+      exit_when: "tasks.review-doc.outputs.quality_score >= 8"
+      on_max_iterations: continue_last
+      context:
+        strategy: fresh
+        summary_output: critic_feedback
+      budget_per_iteration:
+        max_tokens: 20000
+        max_cost_usd: 0.50
+
+  - name: review-doc
+    agent: critic
+    needs: [draft-doc]
+    description: |
+      Review the documentation draft. Score it 1-10 on clarity and completeness.
+      Output quality_score as an integer. Output critic_feedback as a summary
+      of what must change.
+    outputs:
+      - name: quality_score
+        type: number
+        required: true
+      - name: critic_feedback
+        type: string
+        required: true
+
+  # Final gate: lead reviews the complete output
+  - name: final-review
+    agent: lead
+    needs: [implement, review-doc]
+    description: |
+      Review the implementation and documentation.
+      Approve or flag blockers.
+    outputs:
+      - name: approved
+        type: boolean
+        required: true
+      - name: summary
+        type: markdown
+
+runtime:
+  max_concurrent_agents: 3
+  budget:
+    max_cost_usd: 30.00
+    on_exceed: stop
+
+hooks:
+  on_loop_iteration:
+    run: "echo 'Loop iteration complete — check .oap/loop-state.json'"
+  on_loop_max_iterations_reached:
+    run: "echo 'Loop hit max iterations — review required'"

@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagentprotocol.dev/schemas/v0.1/agent.schema.json",
+  "title": "Agent",
+  "description": "Defines who does the work. Persona, model, tools, permissions, budget.",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "Agent identifier. Referenced by tasks. REQUIRED in Workflow context. Optional in AgentProfile (name comes from metadata)."
+    },
+    "model": {
+      "type": "string",
+      "description": "Explicit model identifier (e.g. 'claude-sonnet-4', 'gpt-4o'). Supports ${ENV_VAR} interpolation. Use this OR model_tier, not both."
+    },
+    "model_tier": {
+      "type": "string",
+      "enum": ["frontier", "standard", "fast", "embedding"],
+      "description": "Portable model tier. Runtime maps to a concrete model via runtime.model_tiers. frontier = best available (planning, architecture). standard = balanced (general tasks). fast = cheap and quick (well-defined, mechanical). embedding = vector/search."
+    },
+    "persona": {
+      "oneOf": [
+        { "$ref": "persona.schema.json" },
+        { "type": "string", "description": "$ref to external persona file." }
+      ],
+      "description": "Structured agent identity. Who the agent is, how it behaves, what it knows. Replaces unstructured system prompts."
+    },
+    "instructions": {
+      "type": "string",
+      "description": "Raw system prompt in markdown. Bridges from AGENTS.md / .cursorrules. Use for migration; prefer persona + principles for new definitions."
+    },
+    "tools": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Tool names available to this agent."
+    },
+    "principles": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Behavioral principles. Injected into agent system prompt."
+    },
+    "policies": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "$ref": "policy.schema.json" },
+          { "type": "string", "description": "$ref to external policy definition." }
+        ]
+      },
+      "description": "Policies governing agent behavior."
+    },
+    "subagent_strategy": {
+      "$ref": "#/$defs/SubagentStrategy"
+    },
+    "permissions": {
+      "$ref": "permissions.schema.json",
+      "description": "Security sandbox. Filesystem, network, shell, and secret access controls."
+    },
+    "budget": {
+      "$ref": "#/$defs/Budget",
+      "description": "Token and cost limits for this agent across the workflow."
+    },
+    "model_fallback": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Fallback model chain. If primary model is unavailable or budget exceeded, try these in order."
+    },
+    "max_concurrent_tasks": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1,
+      "description": "Max tasks this agent can work simultaneously. Default 1 (serial). Increase for agents that can safely parallelize (e.g., independent file edits)."
+    },
+    "output_format": {
+      "type": "string",
+      "enum": ["stream", "structured"],
+      "default": "stream",
+      "description": "Controls whether the agent must produce a structured TaskResult block.\n\n'stream' (default): agent outputs free-form text; runtime may apply heuristic extraction of typed outputs from fenced ```json blocks.\n\n'structured': runtime MUST append a closing instruction to the task prompt requiring the agent to emit a final fenced ```oap-result``` block containing a valid TaskResult JSON object. Runtime MUST parse this block and use it as the authoritative source for outputs, artifacts, and coordination signals (build_ready). Takes precedence over any heuristic extraction. Use this when epoch coordination or downstream output interpolation is required."
+    }
+  },
+  "patternProperties": {
+    "^x-": { "description": "Runtime-specific extensions." }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "TaskResult": {
+      "type": "object",
+      "description": "Structured result block emitted by agents when output_format=structured. The runtime injects the instruction to produce this as the final fenced ```oap-result``` block. Runtimes MUST parse it and promote its fields to OAP envelopes (signal.output, signal.artifact, build.ready).",
+      "required": ["status"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["ok", "error", "partial"],
+          "description": "Task completion status. 'ok' = success, all success_criteria met. 'error' = terminal failure. 'partial' = work done but some criteria unmet."
+        },
+        "summary": {
+          "type": "string",
+          "description": "Human-readable summary of what was done. Runtime MAY surface this as the task's final log entry."
+        },
+        "outputs": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Named output values. Keys SHOULD match the task's declared outputs[]. Scalars (string, number, boolean) are promoted to signal.output envelopes. Nested objects and arrays are stored as-is and accessible via ${tasks.<name>.outputs.<key>}."
+        },
+        "artifacts": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "File paths written or modified by this task. Promoted to signal.artifact envelopes. Used by the file registry for epoch attribution and conflict detection. Paths are relative to the workflow's working_dir."
+        },
+        "build_ready": {
+          "type": "boolean",
+          "default": false,
+          "description": "Set to true when the agent has finished all file writes and is ready for a build epoch. Equivalent to sending build.ready — the runtime calls epoch.MarkReady() on behalf of the agent. Only meaningful when a build_policy is defined on the workflow. Eliminates the need for auto_ack."
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message when status=error or status=partial. Required if status != ok."
+        },
+        "tokens_used": {
+          "type": "object",
+          "description": "Self-reported token usage. Runtime MAY prefer its own tracked values if available.",
+          "properties": {
+            "input": { "type": "integer", "minimum": 0 },
+            "output": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "Budget": {
+      "type": "object",
+      "properties": {
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum total tokens (input + output) this agent can consume."
+        },
+        "max_cost_usd": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Maximum USD cost. Runtime tracks based on model pricing."
+        },
+        "on_exceed": {
+          "type": "string",
+          "enum": ["stop", "fallback", "warn"],
+          "default": "stop",
+          "description": "stop = halt agent. fallback = switch to model_fallback chain. warn = log warning, continue."
+        }
+      },
+      "additionalProperties": false
+    },
+    "SubagentStrategy": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["liberal", "conservative", "disabled"],
+          "default": "conservative"
+        },
+        "max_concurrent": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 4
+        },
+        "scope": {
+          "type": "string",
+          "enum": ["one_task_per_subagent", "shared"],
+          "default": "one_task_per_subagent"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

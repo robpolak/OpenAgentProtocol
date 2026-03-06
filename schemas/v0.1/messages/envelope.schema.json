@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagentprotocol.dev/schemas/v0.1/messages/envelope.schema.json",
+  "title": "OAP Message Envelope",
+  "description": "CloudEvents-inspired envelope for all agent communication. Transport-agnostic — works over stdin/stdout, HTTP, WebSocket, message queue.",
+  "type": "object",
+  "required": ["oap_version", "id", "type", "source", "timestamp"],
+  "properties": {
+    "oap_version": {
+      "type": "string",
+      "const": "0.1"
+    },
+    "id": {
+      "type": "string",
+      "description": "Unique message identifier. UUID recommended."
+    },
+    "type": {
+      "type": "string",
+      "pattern": "^[a-z]+\\.[a-z_]+$",
+      "description": "Message type in category.action format. See type registry."
+    },
+    "source": {
+      "type": "string",
+      "description": "Sender identifier. Format: agent:<name>, coordinator, runtime, user."
+    },
+    "target": {
+      "type": "string",
+      "description": "Recipient identifier. Same format as source. Omit for broadcast."
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp."
+    },
+    "correlation_id": {
+      "type": "string",
+      "description": "Links related messages. Typically task name or request ID."
+    },
+    "reply_to": {
+      "type": "string",
+      "description": "Message ID this is responding to. Required for response types."
+    },
+    "payload": {
+      "type": "object",
+      "description": "Message body. Schema determined by type field."
+    },
+    "parts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Part" },
+      "description": "Rich content attachments (text, files, data). A2A-compatible."
+    },
+    "extensions": {
+      "type": "object",
+      "description": "Namespaced extensions. Keys MUST be prefixed with x-.",
+      "patternProperties": {
+        "^x-": { "type": "object" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "Part": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type", "text"],
+          "properties": {
+            "type": { "const": "text" },
+            "text": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "data"],
+          "properties": {
+            "type": { "const": "data" },
+            "data": { "type": "object" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["type", "file"],
+          "properties": {
+            "type": { "const": "file" },
+            "file": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string" },
+                "mime_type": { "type": "string" },
+                "uri": { "type": "string" },
+                "bytes": { "type": "string", "description": "Base64-encoded content." }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

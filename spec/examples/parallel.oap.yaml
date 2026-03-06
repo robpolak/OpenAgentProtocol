@@ -1,0 +1,46 @@
+# Three agents work independently, then a lead merges results.
+oap_version: "0.1"
+kind: Workflow
+metadata:
+  name: feature-sprint
+
+agents:
+  - name: frontend
+    model: ${AGENT_MODEL}
+    tools: [shell, file_editor]
+    principles:
+      - Follow existing component patterns
+      - Write tests for every new component
+
+  - name: backend
+    model: ${AGENT_MODEL}
+    tools: [shell, file_editor, database]
+
+  - name: lead
+    model: ${AGENT_MODEL}
+    tools: [shell, file_editor, test_runner]
+
+tasks:
+  - name: build-ui
+    agent: frontend
+    description: Implement the settings page UI based on the Figma spec
+    outputs: [changed_files]
+
+  - name: build-api
+    agent: backend
+    description: Add CRUD endpoints for user preferences
+    outputs: [changed_files, api_schema]
+
+  - name: write-tests
+    agent: backend
+    description: Write integration tests for the new endpoints
+    outputs: [test_files]
+
+  - name: integrate
+    agent: lead
+    needs: [build-ui, build-api, write-tests]
+    description: Wire frontend to backend, resolve conflicts, run full test suite
+    success_criteria:
+      - All tests pass
+      - No lint errors
+      - API schema matches frontend expectations

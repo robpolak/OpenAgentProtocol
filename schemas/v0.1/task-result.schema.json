@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagentprotocol.dev/schemas/v0.1/task-result.schema.json",
+  "title": "TaskResult",
+  "description": "Structured result produced by an agent when output_format=structured. The runtime injects a closing instruction into the task prompt requiring the agent to emit this as a final fenced ```oap-result``` block. The runtime parses the block and uses it as the authoritative source for outputs, artifacts, and epoch coordination signals.\n\nThe fenced block contract:\n  ```oap-result\n  { \"status\": \"ok\", \"outputs\": {}, \"artifacts\": [], \"build_ready\": true }\n  ```\n\nRuntimes MUST:\n  1. Append the oap-result instruction to the agent's task description.\n  2. Parse the LAST oap-result block emitted (agents may emit intermediate drafts).\n  3. Promote outputs[] scalars to signal.output envelopes.\n  4. Promote artifacts[] paths to signal.artifact envelopes.\n  5. Call epoch.MarkReady() if build_ready=true and a build_policy is defined.",
+  "type": "object",
+  "required": ["status"],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["ok", "error", "partial"],
+      "description": "Task completion status. 'ok' = success, all success_criteria met. 'error' = terminal failure, no usable output. 'partial' = work done but some criteria unmet (e.g. build still failing)."
+    },
+    "summary": {
+      "type": "string",
+      "description": "Human-readable summary of what was accomplished. Runtime MAY surface this as the task's final log entry or as the agent's last signal.output text."
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Named output values. Keys SHOULD match the task's declared outputs[]. Scalar values (string, number, boolean) are promoted to signal.output envelopes and become available via ${tasks.<name>.outputs.<key>} interpolation in downstream tasks. Nested objects and arrays are stored as-is and accessible but NOT promoted to individual envelopes."
+    },
+    "artifacts": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "File paths written or modified by this task. Paths SHOULD be relative to the workflow's working_dir. Each path is promoted to a signal.artifact envelope and registered in the file registry for epoch attribution and parallel-write conflict detection. If the agent also emitted signal.artifact signals during streaming, the union of both lists is used."
+    },
+    "build_ready": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, the agent asserts that all file writes are complete and the codebase is ready for a build epoch. The runtime calls epoch.MarkReady() on the agent's behalf — equivalent to sending a build.ready message. Only meaningful when the workflow defines a build_policy. When build_ready=true the runtime does NOT need auto_ack=true on the build_policy."
+    },
+    "error": {
+      "type": "string",
+      "description": "Error description when status is 'error' or 'partial'. REQUIRED when status != 'ok'. Should include enough context for the coordinator to decide whether to retry, escalate, or fail the workflow."
+    },
+    "tokens_used": {
+      "type": "object",
+      "description": "Self-reported token usage for this task. Runtime MAY prefer its own tracked values from the transport layer if available; this field is a fallback for runtimes that don't track tokens independently.",
+      "properties": {
+        "input": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Input tokens consumed."
+        },
+        "output": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Output tokens generated."
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

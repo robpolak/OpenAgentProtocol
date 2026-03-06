@@ -1,0 +1,257 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagentprotocol.dev/schemas/v0.1/task.schema.json",
+  "title": "Task",
+  "description": "A unit of work — inputs, outputs, dependencies, success criteria.",
+  "type": "object",
+  "required": ["name", "description"],
+  "anyOf": [
+    { "required": ["agent"] },
+    { "required": ["workflow_ref"] }
+  ],
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "Task identifier. Referenced in `needs`."
+    },
+    "agent": {
+      "type": "string",
+      "description": "Name of the agent assigned to this task."
+    },
+    "description": {
+      "type": "string",
+      "description": "What the task does. Supports ${} interpolation from upstream outputs."
+    },
+    "needs": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Task names this task depends on. Forms implicit DAG."
+    },
+    "when": {
+      "type": "string",
+      "description": "Condition expression. Task only runs if this evaluates true."
+    },
+    "any_of": {
+      "type": "boolean",
+      "default": false,
+      "description": "If true, task runs when ANY dependency completes (not all)."
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Named inputs. Can reference upstream outputs via ${tasks.<name>.outputs.<key>}."
+    },
+    "outputs": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "type": "string" },
+          { "$ref": "#/$defs/TypedOutput" }
+        ]
+      },
+      "description": "Named outputs produced by this task. Simple form: string name. Typed form: object with name, type, enum, schema."
+    },
+    "success_criteria": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Human-readable conditions. The assigned agent evaluates these before marking the task complete. Runtimes MAY present these as a checklist."
+    },
+    "file_scope": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "File/directory paths this task is allowed to modify."
+    },
+    "artifacts": {
+      "type": "array",
+      "items": { "$ref": "artifact.schema.json" },
+      "description": "Persistent artifacts produced or updated by this task."
+    },
+    "timeout": {
+      "type": "string",
+      "pattern": "^[0-9]+(s|m|h)$",
+      "description": "Maximum time for this task. Exceeding triggers on_failure."
+    },
+    "retry": {
+      "$ref": "#/$defs/RetryPolicy"
+    },
+    "workflow_ref": {
+      "type": "string",
+      "description": "Path or URL to a sub-workflow (.oap.yaml). When set, this task delegates to an entire workflow. The sub-workflow's outputs become this task's outputs. Agent field is optional (sub-workflow defines its own agents)."
+    },
+    "on_failure": {
+      "type": "string",
+      "enum": ["retry", "skip", "fail_workflow", "escalate", "fallback"],
+      "default": "fail_workflow",
+      "description": "retry = use retry policy. skip = mark skipped, continue DAG. fail_workflow = abort. escalate = send request.approval to escalate_to. fallback = run fallback_task."
+    },
+    "escalate_to": {
+      "type": "string",
+      "description": "Who receives escalation when on_failure=escalate. Values: 'user' (workflow invoker), agent name, or 'coordinator'. Default: 'user'."
+    },
+    "fallback_task": {
+      "type": "string",
+      "description": "Task name to run when on_failure=fallback. Receives this task's inputs."
+    },
+    "approval": {
+      "$ref": "#/$defs/Approval",
+      "description": "Human-in-the-loop gate. Task pauses for approval before execution or after completion."
+    },
+    "budget": {
+      "type": "object",
+      "properties": {
+        "max_tokens": { "type": "integer", "minimum": 1, "description": "Max tokens for this task." },
+        "max_cost_usd": { "type": "number", "minimum": 0, "description": "Max USD cost for this task." }
+      },
+      "additionalProperties": false,
+      "description": "Per-task token/cost limit. Overrides agent-level budget for this task."
+    },
+    "concurrency_group": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "Named concurrency group. Tasks in the same group are throttled by the group's max_parallel limit in runtime.concurrency."
+    },
+    "priority": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100,
+      "default": 50,
+      "description": "Scheduling priority (0-100, higher = runs first). Used when tasks compete for concurrency slots."
+    },
+    "resource_locks": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Named resources this task requires exclusive access to. Task blocks until all locks are acquired. Use for mutual exclusion (e.g., database, shared state)."
+    },
+    "loop": {
+      "$ref": "#/$defs/LoopConfig",
+      "description": "Iterative execution config. Task re-runs until exit_when is true or max_iterations is reached. Each iteration injects loop.* variables. See spec/LOOPS.md."
+    }
+  },
+  "patternProperties": {
+    "^x-": { "description": "Runtime-specific extensions." }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "TypedOutput": {
+      "type": "object",
+      "required": ["name", "type"],
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "type": "string", "enum": ["string", "number", "boolean", "file_list", "markdown", "json", "action"] },
+        "enum": { "type": "array", "items": { "type": "string" }, "description": "Allowed values. Violations fail validation." },
+        "schema": { "type": "object", "description": "Inline JSON Schema for complex output validation." },
+        "description": { "type": "string" },
+        "required": { "type": "boolean", "default": true },
+        "visibility": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Agent names allowed to read this output. Empty or omitted = visible to all agents in the workflow. Runtimes MUST enforce: interpolation of this output by unauthorized agents MUST fail."
+        }
+      },
+      "additionalProperties": false
+    },
+    "Approval": {
+      "type": "object",
+      "required": ["when"],
+      "properties": {
+        "when": {
+          "type": "string",
+          "enum": ["before_start", "after_complete", "both"],
+          "description": "before_start = pause before agent begins. after_complete = pause after agent finishes, before marking done."
+        },
+        "approvers": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Who can approve. 'user' = workflow invoker. Agent names for agent-as-reviewer. Empty = any."
+        },
+        "timeout": {
+          "type": "string",
+          "pattern": "^[0-9]+(s|m|h)$",
+          "description": "How long to wait for approval before on_timeout fires."
+        },
+        "on_timeout": {
+          "type": "string",
+          "enum": ["auto_approve", "fail", "escalate"],
+          "default": "fail",
+          "description": "What happens if approval times out."
+        }
+      },
+      "additionalProperties": false
+    },
+    "RetryPolicy": {
+      "type": "object",
+      "properties": {
+        "max_attempts": { "type": "integer", "minimum": 1, "default": 1 },
+        "backoff": { "type": "string", "enum": ["none", "linear", "exponential"], "default": "none" }
+      },
+      "additionalProperties": false
+    },
+    "LoopConfig": {
+      "type": "object",
+      "required": ["max_iterations"],
+      "description": "Iterative execution. Task or phase repeats until exit_when is true or max_iterations is reached.",
+      "properties": {
+        "max_iterations": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Hard upper bound on iterations. 1 = runs exactly once (no cycling). Required."
+        },
+        "exit_when": {
+          "type": "string",
+          "description": "OAP expression evaluated after each iteration completes. Loop exits when true. MUST reference typed, required outputs for reliable termination."
+        },
+        "on_max_iterations": {
+          "type": "string",
+          "enum": ["fail", "escalate", "continue_last"],
+          "default": "fail",
+          "description": "fail = task/phase fails. escalate = pause for human approval. continue_last = use final iteration output, mark status partial."
+        },
+        "escalate_to": {
+          "type": "string",
+          "default": "user",
+          "description": "Escalation target when on_max_iterations=escalate. Values: 'user', agent name, or 'coordinator'."
+        },
+        "context": {
+          "type": "object",
+          "properties": {
+            "strategy": {
+              "type": "string",
+              "enum": ["fresh", "reuse"],
+              "default": "fresh",
+              "description": "fresh = new agent session per iteration with filesystem state injected (recommended). reuse = continue same session. Runtimes SHOULD warn when reuse and max_iterations > 3."
+            },
+            "inject_artifacts": {
+              "type": "boolean",
+              "default": true,
+              "description": "When strategy=fresh, inject artifacts written by the previous iteration into the new session's readable context."
+            },
+            "summary_output": {
+              "type": "string",
+              "description": "Name of a string output produced by the task/phase. Its value is available as ${loop.previous_summary} in the next iteration."
+            }
+          },
+          "additionalProperties": false
+        },
+        "budget_per_iteration": {
+          "type": "object",
+          "properties": {
+            "max_tokens": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Max tokens per iteration. Enforced against enclosing task, agent, and workflow budget ceilings."
+            },
+            "max_cost_usd": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Max USD cost per iteration."
+            }
+          },
+          "additionalProperties": false,
+          "description": "Per-iteration budget cap. Total effective budget = budget_per_iteration * max_iterations, subject to enclosing ceilings."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

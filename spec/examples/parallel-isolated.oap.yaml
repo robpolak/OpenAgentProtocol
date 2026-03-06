@@ -1,0 +1,163 @@
+oap_version: "0.1"
+kind: Workflow
+metadata:
+  name: parallel-isolated-pipeline
+  description: Demonstrates concurrency groups, resource locks, output visibility, communication boundaries, and execution isolation.
+  labels:
+    example: parallelism-isolation
+
+agents:
+  - name: lead
+    model: claude-sonnet
+    persona:
+      role: Lead engineer
+      expertise: [architecture, code-review]
+    permissions:
+      communication:
+        can_message: ["*"]
+        can_receive_from: ["*"]
+        can_handoff_to: [backend-1, backend-2]
+
+  - name: backend-1
+    model: claude-sonnet
+    max_concurrent_tasks: 2
+    permissions:
+      filesystem:
+        allow_read: ["*"]
+        allow_write: ["src/api/", "src/models/"]
+        deny: ["**/.env"]
+      communication:
+        can_message: [lead, backend-2, coordinator]
+        can_receive_from: [lead, backend-2, coordinator]
+
+  - name: backend-2
+    model: claude-sonnet
+    max_concurrent_tasks: 2
+    permissions:
+      filesystem:
+        allow_read: ["*"]
+        allow_write: ["src/services/", "src/utils/"]
+        deny: ["**/.env"]
+      communication:
+        can_message: [lead, backend-1, coordinator]
+        can_receive_from: [lead, backend-1, coordinator]
+
+  - name: untrusted-linter
+    model: gpt-4o-mini
+    permissions:
+      filesystem:
+        allow_read: ["src/"]
+        allow_write: []
+      network:
+        allow: none
+      shell:
+        allow: false
+      communication:
+        can_message: [coordinator]
+        can_receive_from: [coordinator]
+
+tasks:
+  # Phase 1: Analysis (parallel, no restrictions)
+  - name: analyze-api
+    agent: lead
+    description: Analyze API layer for refactoring opportunities
+    outputs:
+      - name: api-plan
+        type: json
+        schema:
+          type: object
+          required: [files, priority]
+          properties:
+            files: { type: array, items: { type: string } }
+            priority: { type: string, enum: [low, medium, high] }
+        visibility: [lead, backend-1]
+
+  - name: analyze-services
+    agent: lead
+    description: Analyze service layer for refactoring opportunities
+    outputs:
+      - name: service-plan
+        type: json
+        visibility: [lead, backend-2]
+
+  - name: lint-check
+    agent: untrusted-linter
+    description: Run static analysis on codebase
+    outputs:
+      - name: lint-report
+        type: markdown
+
+  # Phase 2: Implementation (concurrency-controlled)
+  - name: refactor-api-models
+    agent: backend-1
+    description: Refactor API models per analysis plan
+    needs: [analyze-api]
+    inputs:
+      plan: ${tasks.analyze-api.outputs.api-plan}
+    concurrency_group: database-migrations
+    resource_locks: [database]
+    priority: 90
+
+  - name: refactor-api-handlers
+    agent: backend-1
+    description: Refactor API handlers
+    needs: [analyze-api]
+    inputs:
+      plan: ${tasks.analyze-api.outputs.api-plan}
+    concurrency_group: database-migrations
+    priority: 50
+
+  - name: refactor-services
+    agent: backend-2
+    description: Refactor service layer per analysis plan
+    needs: [analyze-services]
+    inputs:
+      plan: ${tasks.analyze-services.outputs.service-plan}
+    resource_locks: [database]
+    priority: 70
+
+  - name: refactor-utils
+    agent: backend-2
+    description: Refactor shared utilities
+    needs: [analyze-services, lint-check]
+    inputs:
+      lint: ${tasks.lint-check.outputs.lint-report}
+
+  # Phase 3: Review
+  - name: final-review
+    agent: lead
+    description: Review all changes
+    needs: [refactor-api-models, refactor-api-handlers, refactor-services, refactor-utils]
+    approval:
+      when: after_complete
+      approvers: [user]
+      timeout: 1h
+      on_timeout: fail
+
+runtime:
+  max_concurrent_agents: 3
+  timeout: 2h
+  working_dir: ./
+  concurrency:
+    database-migrations:
+      max_parallel: 1
+      queue: priority
+  resource_locks: [database]
+  isolation:
+    level: process
+    shared_filesystem: true
+  budget:
+    max_cost_usd: 25.00
+    on_exceed: warn
+
+build_policy:
+  strategy: epoch_batched
+  epoch_interval: 120s
+  build_command: make build
+  test_command: make test
+  build_timeout: 180s
+  file_ownership:
+    conflict_resolution: first_writer_wins
+  on_failure:
+    attribution: compiler_error_mapping
+    action: notify_responsible_agent

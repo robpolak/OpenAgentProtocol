@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagentprotocol.dev/schemas/v0.1/coordination/build-policy.schema.json",
+  "title": "BuildPolicy",
+  "description": "Multi-agent build coordination — epoch/freeze/build/attribute/feedback.",
+  "type": "object",
+  "required": ["strategy", "build_command"],
+  "properties": {
+    "strategy": {
+      "type": "string",
+      "enum": ["epoch_batched", "on_task_complete", "continuous", "gated", "manual"],
+      "description": "When builds are triggered."
+    },
+    "epoch_interval": {
+      "type": "string",
+      "pattern": "^[0-9]+(s|m|h)$",
+      "description": "Interval between epoch builds. Required for epoch_batched."
+    },
+    "build_command": {
+      "type": "string",
+      "description": "Command to build the project."
+    },
+    "test_command": {
+      "type": "string",
+      "description": "Command to run tests after a successful build."
+    },
+    "ack_timeout": {
+      "type": "string",
+      "pattern": "^[0-9]+(s|m)$",
+      "default": "30s",
+      "description": "How long coordinator waits for agent ACKs after epoch_start."
+    },
+    "ack_grace_period": {
+      "type": "string",
+      "pattern": "^[0-9]+(s|m)$",
+      "default": "10s",
+      "description": "Extra time before unresponsive agents are frozen-by-default."
+    },
+    "build_timeout": {
+      "type": "string",
+      "pattern": "^[0-9]+(s|m)$",
+      "default": "120s",
+      "description": "Max time for build_command + test_command combined."
+    },
+    "file_ownership": {
+      "type": "object",
+      "properties": {
+        "conflict_resolution": {
+          "type": "string",
+          "enum": ["first_writer_wins", "orchestrator_mediated", "sequential_access", "merge_attempt"],
+          "default": "first_writer_wins"
+        }
+      },
+      "additionalProperties": false
+    },
+    "on_failure": {
+      "type": "object",
+      "properties": {
+        "attribution": {
+          "type": "string",
+          "enum": ["compiler_error_mapping", "file_ownership", "none"],
+          "default": "compiler_error_mapping",
+          "description": "How to determine which agent caused the failure."
+        },
+        "action": {
+          "type": "string",
+          "enum": ["notify_responsible_agent", "pause_all", "rollback", "escalate"],
+          "default": "notify_responsible_agent"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "patternProperties": {
+    "^x-": { "description": "Runtime-specific extensions." }
+  },
+  "additionalProperties": false
+}

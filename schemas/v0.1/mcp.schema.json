@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagentprotocol.dev/schemas/v0.1/mcp.schema.json",
+  "title": "McpServer",
+  "description": "Declares an MCP (Model Context Protocol) server available to agents in the workflow. Connection config is defined once here and referenced by name in agent permissions. OAP is one layer above MCP — it does not replace the protocol, only controls which agents can reach which servers.",
+  "type": "object",
+  "required": ["name", "transport"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "Unique identifier for this MCP server within the workflow. Agents reference this name in permissions.mcp.servers."
+    },
+    "transport": {
+      "type": "string",
+      "enum": ["stdio", "sse", "http"],
+      "description": "MCP transport layer. stdio = subprocess (most common for local tools). sse = server-sent events over HTTP. http = plain HTTP/JSON-RPC."
+    },
+    "command": {
+      "type": "string",
+      "description": "Command to launch the MCP server process. Required when transport=stdio. Supports ${ENV_VAR} interpolation. e.g. 'npx @modelcontextprotocol/server-github'."
+    },
+    "args": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Arguments passed to the command. Only for transport=stdio."
+    },
+    "url": {
+      "type": "string",
+      "description": "Server URL. Required when transport=sse or http. Supports ${ENV_VAR} interpolation. e.g. 'https://mcp.internal.corp/api'."
+    },
+    "env": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "Environment variables injected into the MCP server process (stdio) or sent as headers (sse/http). Supports ${secrets.<name>} interpolation for sensitive values."
+    },
+    "auth": {
+      "$ref": "#/$defs/McpAuth",
+      "description": "Authentication config. When omitted, no auth is added."
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable description of what this server provides. Injected into agent context so the agent knows what it has access to."
+    },
+    "tools": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Explicit list of tool names this server exposes. Optional — runtimes MAY discover tools dynamically at startup. Declaring them here enables static validation and IDE autocomplete."
+    },
+    "startup_timeout": {
+      "type": "string",
+      "pattern": "^[0-9]+(ms|s|m)$",
+      "default": "10s",
+      "description": "How long to wait for the server to be ready. Workflow fails if the server does not respond within this window."
+    }
+  },
+  "patternProperties": {
+    "^x-": { "description": "Runtime-specific extensions." }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "McpAuth": {
+      "type": "object",
+      "description": "Authentication for the MCP server connection.",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["bearer", "basic", "header", "none"],
+          "description": "bearer = Authorization: Bearer <token>. basic = HTTP Basic Auth. header = custom header key/value. none = no auth (default when auth is omitted)."
+        },
+        "token": {
+          "type": "string",
+          "description": "Bearer token value. Supports ${secrets.<name>} interpolation. Only for type=bearer."
+        },
+        "username": {
+          "type": "string",
+          "description": "Basic auth username. Only for type=basic."
+        },
+        "password": {
+          "type": "string",
+          "description": "Basic auth password. Supports ${secrets.<name>} interpolation. Only for type=basic."
+        },
+        "header": {
+          "type": "string",
+          "description": "Custom header name. Only for type=header. e.g. 'X-API-Key'."
+        },
+        "value": {
+          "type": "string",
+          "description": "Custom header value. Supports ${secrets.<name>} interpolation. Only for type=header."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

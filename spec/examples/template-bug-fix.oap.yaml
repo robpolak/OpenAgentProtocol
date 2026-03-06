@@ -1,0 +1,65 @@
+# Parameterized workflow template — reusable bug fix pattern.
+oap_version: "0.1"
+kind: WorkflowTemplate
+metadata:
+  name: bug-fix-template
+  description: Standard diagnose → fix → verify pattern
+
+parameters:
+  bug_description:
+    type: string
+    description: What's broken
+    required: true
+  service:
+    type: string
+    description: Which service to fix
+    required: true
+  test_command:
+    type: string
+    description: Test command to verify fix
+    default: make test
+  agent_model:
+    type: string
+    default: ${AGENT_MODEL}
+
+workflow:
+  agents:
+    - name: engineer
+      persona:
+        role: senior-engineer
+        expertise:
+          - debugging
+          - "${params.service}"
+        style:
+          tone: concise
+          autonomy: autonomous
+      model: ${params.agent_model}
+      tools: [shell, file_editor, code_search, test_runner]
+
+  tasks:
+    - name: diagnose
+      agent: engineer
+      description: "Analyze ${params.service} logs and code to find root cause of: ${params.bug_description}"
+      outputs:
+        - name: root_cause
+          type: string
+          required: true
+        - name: affected_files
+          type: file_list
+
+    - name: fix
+      agent: engineer
+      needs: [diagnose]
+      description: "Implement fix for ${tasks.diagnose.outputs.root_cause}"
+      file_scope: ["src/"]
+      success_criteria:
+        - Code compiles
+        - Fix addresses root cause, not symptoms
+
+    - name: verify
+      agent: engineer
+      needs: [fix]
+      description: "Run ${params.test_command} and confirm fix. Verify no regressions."
+      success_criteria:
+        - All tests pass
+        - No new warnings

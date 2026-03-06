@@ -1,0 +1,93 @@
+# Full swarm — planning phase, parallel execution with build coordination, review.
+oap_version: "0.1"
+kind: Workflow
+metadata:
+  name: auth-migration
+
+agent_profile: ./profiles/senior-engineer.oap.yaml
+
+agents:
+  - name: architect
+    model: ${AGENT_MODEL}
+    tools: [shell, file_editor, code_search]
+    principles:
+      - Design for backward compatibility
+      - Document every breaking change
+
+  - name: backend-1
+    model: ${AGENT_MODEL}
+    tools: [shell, file_editor, test_runner]
+
+  - name: backend-2
+    model: ${AGENT_MODEL}
+    tools: [shell, file_editor, test_runner]
+
+  - name: reviewer
+    model: ${AGENT_MODEL}
+    tools: [shell, code_search, test_runner]
+
+build_policy:
+  strategy: epoch_batched
+  epoch_interval: 300s
+  build_command: make build
+  test_command: make test
+  ack_timeout: 30s
+  ack_grace_period: 10s
+  build_timeout: 120s
+  file_ownership:
+    conflict_resolution: first_writer_wins
+  on_failure:
+    attribution: compiler_error_mapping
+    action: notify_responsible_agent
+
+phases:
+  - name: plan
+    tasks:
+      - name: design
+        agent: architect
+        description: >
+          Analyze current auth system, design migration plan from session-based
+          to JWT auth. Produce task breakdown with file ownership assignments.
+        outputs: [migration_plan, task_assignments]
+        artifacts:
+          - path: tasks/migration-plan.md
+
+  - name: execute
+    tasks:
+      - name: migrate-models
+        agent: backend-1
+        needs: [design]
+        description: Migrate user/session models to JWT token schema
+        file_scope: [src/models/, src/db/migrations/]
+
+      - name: migrate-middleware
+        agent: backend-2
+        needs: [design]
+        description: Replace session middleware with JWT validation
+        file_scope: [src/middleware/, src/auth/]
+
+      - name: migrate-tests
+        agent: backend-1
+        needs: [migrate-models]
+        description: Update all auth-related tests for JWT
+        file_scope: [tests/auth/]
+
+      - name: migrate-docs
+        agent: backend-2
+        needs: [migrate-middleware]
+        description: Update API docs with new auth headers
+        file_scope: [docs/api/]
+
+  - name: review
+    tasks:
+      - name: integration-review
+        agent: reviewer
+        needs: [migrate-models, migrate-middleware, migrate-tests, migrate-docs]
+        description: >
+          Run full test suite. Review all changes for security issues,
+          backward compatibility, and documentation completeness.
+        success_criteria:
+          - All tests pass
+          - No hardcoded secrets
+          - Migration is reversible
+          - API docs match implementation

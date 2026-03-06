@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagentprotocol.dev/schemas/v0.1/artifact.schema.json",
+  "title": "Artifact",
+  "description": "Persistent workspace file that tracks state across tasks or sessions.",
+  "type": "object",
+  "required": ["path"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Artifact identifier."
+    },
+    "path": {
+      "type": "string",
+      "description": "Relative file path in the workspace."
+    },
+    "lifecycle": {
+      "type": "string",
+      "enum": ["per_task", "per_workflow", "persistent"],
+      "default": "per_workflow",
+      "description": "per_task = reset each task. per_workflow = reset each workflow run. persistent = survives across runs."
+    },
+    "purpose": {
+      "type": "string",
+      "description": "Human-readable description of what this artifact tracks."
+    }
+  },
+  "additionalProperties": false
+}

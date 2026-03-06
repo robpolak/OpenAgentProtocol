@@ -1,0 +1,204 @@
+# Production workflow — permissions, budgets, approval gates, sub-workflows.
+# Demonstrates every major OAP feature in a realistic migration scenario.
+oap_version: "0.1"
+kind: Workflow
+metadata:
+  name: database-migration
+  description: Migrate from PostgreSQL to CockroachDB with zero downtime
+  labels:
+    team: platform
+    risk: high
+
+agent_profile: ./personas/senior-go-engineer.oap.yaml
+
+agents:
+  - name: architect
+    model: ${AGENT_MODEL}
+    tools: [shell, file_editor, code_search]
+    persona:
+      role: architect
+      expertise: [databases, distributed-systems, cockroachdb, postgresql]
+      style:
+        autonomy: collaborative
+        risk_tolerance: conservative
+    permissions:
+      filesystem:
+        allow_read: ["*"]
+        allow_write: ["docs/", "src/db/", "migrations/"]
+        deny: [".env*", "secrets/"]
+      network:
+        allow: restricted
+        allowed_hosts: ["*.internal.corp"]
+      shell:
+        allow: true
+        blocked_commands: ["rm -rf", "git push --force"]
+      secrets:
+        - name: db_url_staging
+          source: vault
+          key: platform/staging/cockroachdb_url
+    budget:
+      max_cost_usd: 10.00
+      on_exceed: stop
+
+  - name: migrator
+    model: ${AGENT_MODEL}
+    tools: [shell, file_editor, test_runner, db_client]
+    permissions:
+      filesystem:
+        allow_write: ["src/db/", "migrations/", "tests/db/"]
+      network:
+        allow: restricted
+        allowed_hosts: ["staging-db.internal.corp"]
+      shell:
+        allow: true
+    budget:
+      max_cost_usd: 20.00
+      on_exceed: fallback
+    model_fallback: [claude-haiku, gpt-4o-mini]
+
+  - name: reviewer
+    model: ${AGENT_MODEL}
+    tools: [shell, code_search, test_runner]
+    persona:
+      role: security-reviewer
+      style: { risk_tolerance: conservative, explanation_depth: thorough }
+    permissions:
+      filesystem:
+        allow_write: []
+      network:
+        allow: none
+      shell:
+        allow: true
+        allowed_commands: [make, go, grep, git]
+
+runtime:
+  timeout: 2h
+  max_concurrent_agents: 2
+  env:
+    GOFLAGS: -race
+    DB_MIGRATION_MODE: dry_run
+  budget:
+    max_cost_usd: 50.00
+    on_exceed: stop
+
+observability:
+  tracing: opentelemetry
+  otel_endpoint: ${OTEL_COLLECTOR_URL}
+  log_level: info
+
+build_policy:
+  strategy: on_task_complete
+  build_command: make build
+  test_command: make test-db
+  ack_timeout: 30s
+  build_timeout: 120s
+  file_ownership:
+    conflict_resolution: orchestrator_mediated
+  on_failure:
+    attribution: compiler_error_mapping
+    action: notify_responsible_agent
+
+phases:
+  - name: plan
+    tasks:
+      - name: analyze-schema
+        agent: architect
+        description: >
+          Analyze current PostgreSQL schema, identify CockroachDB incompatibilities,
+          and produce a migration plan with rollback strategy.
+        outputs:
+          - name: migration_plan
+            type: markdown
+            required: true
+          - name: risk_assessment
+            type: string
+            enum: [low, medium, high, critical]
+          - name: estimated_downtime
+            type: string
+        artifacts:
+          - path: docs/migration-plan.md
+            lifecycle: per_workflow
+        success_criteria:
+          - Every table has a migration strategy
+          - Rollback plan documented
+          - Incompatibilities listed with workarounds
+        approval:
+          when: after_complete
+          approvers: [user]
+          timeout: 1h
+          on_timeout: fail
+
+  - name: migrate
+    tasks:
+      - name: write-migrations
+        agent: migrator
+        needs: [analyze-schema]
+        description: >
+          Write migration files per ${tasks.analyze-schema.outputs.migration_plan}.
+          Use reversible migrations only.
+        file_scope: [migrations/, src/db/models/]
+        timeout: 30m
+        retry:
+          max_attempts: 2
+          backoff: exponential
+        budget:
+          max_tokens: 100000
+
+      - name: update-queries
+        agent: migrator
+        needs: [write-migrations]
+        description: Update all SQL queries for CockroachDB compatibility
+        file_scope: [src/db/queries/, src/db/repositories/]
+        on_failure: escalate
+        escalate_to: architect
+
+      - name: write-tests
+        agent: migrator
+        needs: [write-migrations]
+        description: Write integration tests for the new schema
+        file_scope: [tests/db/]
+
+  - name: validate
+    tasks:
+      - name: run-migration-dry-run
+        agent: migrator
+        needs: [write-migrations, update-queries, write-tests]
+        description: Run migrations against staging in dry_run mode, verify all tests pass
+        success_criteria:
+          - All migrations apply cleanly
+          - All existing tests pass
+          - New tests pass
+          - No data loss in staging
+
+      - name: security-review
+        agent: reviewer
+        needs: [write-migrations, update-queries]
+        description: >
+          Review all migration and query changes for SQL injection,
+          privilege escalation, and data exposure risks.
+        success_criteria:
+          - No raw string interpolation in SQL
+          - All queries use parameterized statements
+          - No privilege escalation in migration scripts
+        approval:
+          when: after_complete
+          approvers: [user]
+          timeout: 30m
+          on_timeout: fail
+
+  - name: rollback-prep
+    tasks:
+      - name: write-rollback
+        agent: migrator
+        needs: [run-migration-dry-run, security-review]
+        description: Generate and test rollback scripts for every migration
+        file_scope: [migrations/rollback/]
+        success_criteria:
+          - Every migration has a corresponding rollback
+          - Rollback tested against staging
+
+hooks:
+  on_workflow_complete:
+    run: "echo 'Migration workflow complete' | slack-notify #platform"
+  on_build_fail:
+    run: "make db-reset-staging"

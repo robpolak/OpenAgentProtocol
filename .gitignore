@@ -1,0 +1,51 @@
+# Research (internal, not published)
+research/
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.settings/
+
+# Node (if tooling is added)
+node_modules/
+package-lock.json
+yarn.lock
+.npm/
+
+# Python (if tooling is added)
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# Go
+oap-validate
+bin/
+vendor/
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Coverage / test output
+coverage/
+.nyc_output/
+*.cover
+htmlcov/

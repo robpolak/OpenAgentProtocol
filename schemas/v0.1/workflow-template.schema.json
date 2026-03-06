@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagentprotocol.dev/schemas/v0.1/workflow-template.schema.json",
+  "title": "WorkflowTemplate",
+  "description": "Parameterized workflow pattern. Define once with parameters, instantiate with different values.",
+  "type": "object",
+  "required": ["parameters"],
+  "properties": {
+    "parameters": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/Parameter" },
+      "description": "Named parameters. Values supplied at instantiation. Referenced via ${params.<name>} in the workflow body."
+    },
+    "defaults": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Default parameter values. Overridden by instantiation values."
+    },
+    "workflow": {
+      "$ref": "workflow.schema.json",
+      "description": "The workflow definition. All fields support ${params.<name>} interpolation."
+    }
+  },
+  "patternProperties": {
+    "^x-": { "description": "Runtime-specific extensions." }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "Parameter": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["string", "number", "boolean", "string[]"],
+          "description": "Parameter type."
+        },
+        "description": { "type": "string" },
+        "required": { "type": "boolean", "default": true },
+        "default": { "description": "Default value if not supplied." },
+        "enum": {
+          "type": "array",
+          "description": "Allowed values."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

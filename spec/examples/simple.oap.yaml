@@ -1,0 +1,15 @@
+# Simplest possible OAP file — one agent, one task.
+oap_version: "0.1"
+kind: Workflow
+metadata:
+  name: fix-login-bug
+
+agents:
+  - name: engineer
+    model: ${AGENT_MODEL}
+    tools: [shell, file_editor, test_runner]
+
+tasks:
+  - name: fix-and-verify
+    agent: engineer
+    description: Diagnose the login timeout bug, implement a fix, and run the test suite

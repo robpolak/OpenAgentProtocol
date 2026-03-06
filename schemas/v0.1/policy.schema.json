@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagentprotocol.dev/schemas/v0.1/policy.schema.json",
+  "title": "Policy",
+  "description": "Cross-cutting behavioral rule with trigger conditions and gates.",
+  "type": "object",
+  "required": ["name", "trigger"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "Policy identifier."
+    },
+    "trigger": {
+      "type": "string",
+      "description": "Condition expression (see spec/EXPRESSIONS.md). Use 'always' for unconditional activation."
+    },
+    "gate": {
+      "type": "string",
+      "enum": ["hard", "soft"],
+      "default": "soft",
+      "description": "hard = blocks progress if checks fail. soft = advisory."
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "type": "string", "description": "Well-known check: run_tests, run_lint, run_build, diff_against:<branch>." },
+          { "type": "object", "additionalProperties": true, "description": "Custom check: {run: 'command'} or {quality_bar: 'level'} or runtime-specific." }
+        ]
+      },
+      "description": "Validation checks. All must pass for a hard gate. Well-known: run_tests, run_lint, run_build."
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "type": "string", "description": "Well-known action: write_plan, verify_with_user, update_artifact, capture_lessons." },
+          { "type": "object", "additionalProperties": true, "description": "Custom action: {write_plan: 'path'} or {update_artifact: 'path'} or runtime-specific." }
+        ]
+      },
+      "description": "Actions to perform when policy triggers. Well-known: write_plan, verify_with_user, update_artifact."
+    },
+    "on_failure": {
+      "type": "string",
+      "enum": ["replan", "retry", "escalate", "block", "warn"],
+      "default": "warn",
+      "description": "replan = agent re-plans. retry = re-run checks. escalate = send to user. block = halt task. warn = log and continue."
+    },
+    "skip_when": {
+      "type": "string",
+      "description": "Condition expression to skip this policy (see spec/EXPRESSIONS.md)."
+    },
+    "review_at": {
+      "type": "string",
+      "enum": ["session_start", "task_start", "phase_start"],
+      "description": "When to re-evaluate this policy."
+    }
+  },
+  "patternProperties": {
+    "^x-": { "description": "Runtime-specific extensions." }
+  },
+  "additionalProperties": false
+}

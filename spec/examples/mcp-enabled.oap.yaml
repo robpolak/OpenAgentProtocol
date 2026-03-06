@@ -1,0 +1,174 @@
+# MCP-enabled workflow — code review with external tools.
+#
+# Demonstrates:
+#   - workflow.mcp_servers: define connection config once
+#   - permissions.mcp.servers: per-agent server access control
+#   - permissions.mcp.allow_tools: restrict to specific tools
+#   - permissions.mcp.deny_tools: block destructive operations
+#   - ${secrets.*} interpolation for MCP credentials
+#
+# Three MCP servers are declared:
+#   - github: code search, PR creation, review comments
+#   - postgres: read-only access to the test results DB
+#   - slack: post notifications (deny destructive ops)
+#
+oap_version: "0.1"
+kind: Workflow
+metadata:
+  name: code-review-with-mcp
+  description: Automated code review workflow using GitHub, Postgres, and Slack MCP.
+  labels:
+    complexity: intermediate
+    mcp: "true"
+
+# ─── MCP server definitions ──────────────────────────────────────────
+# Connection config is declared once here. Agents reference servers by name.
+# Runtimes MUST start declared servers before executing tasks.
+mcp_servers:
+  - name: github
+    transport: stdio
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-github"]
+    env:
+      GITHUB_PERSONAL_ACCESS_TOKEN: ${secrets.github_token}
+    description: >
+      GitHub API access. Provides repository search, file content,
+      pull request creation and review, issue management.
+    tools:
+      - search_repositories
+      - get_file_contents
+      - create_pull_request
+      - create_review_comment
+      - list_issues
+      - get_pull_request
+    startup_timeout: 15s
+
+  - name: postgres
+    transport: stdio
+    command: npx
+    args: ["-y", "@modelcontextprotocol/server-postgres", "${secrets.db_url}"]
+    description: >
+      Read-only access to the test results database.
+      Use query tool to fetch test history, coverage trends, and flake data.
+    startup_timeout: 10s
+
+  - name: slack
+    transport: sse
+    url: https://mcp.slack.internal/sse
+    auth:
+      type: bearer
+      token: ${secrets.slack_mcp_token}
+    description: >
+      Slack messaging. Post review summaries to engineering channels.
+    tools:
+      - post_message
+      - list_channels
+
+# ─── Secrets ─────────────────────────────────────────────────────────
+# Resolved before MCP servers start. Workflow fails if any required
+# secret is missing.
+
+# ─── Agents ──────────────────────────────────────────────────────────
+agents:
+  - name: code-analyst
+    model_tier: standard
+    permissions:
+      filesystem:
+        allow_read: ["src/", "tests/"]
+      mcp:
+        # Access two servers; restrict github to read-only tools only
+        servers: [github, postgres]
+        allow_tools:
+          - github:search_repositories
+          - github:get_file_contents
+          - github:get_pull_request
+          - github:list_issues
+          - postgres:query
+        # Belt-and-suspenders: explicitly block anything destructive even
+        # if allow_tools is incorrectly extended in the future.
+        deny_tools:
+          - postgres:execute
+          - postgres:execute_write
+
+  - name: reviewer
+    model_tier: frontier
+    permissions:
+      filesystem:
+        allow_read: ["src/", "tests/", "docs/"]
+      mcp:
+        servers: [github, slack]
+        allow_tools:
+          - github:get_file_contents
+          - github:create_review_comment
+          - github:create_pull_request
+          - slack:post_message
+        deny_tools:
+          - github:delete_repository
+          - github:delete_branch
+
+  - name: notifier
+    model_tier: fast
+    permissions:
+      mcp:
+        servers: [slack]
+        # No allow_tools = all tools on permitted servers are accessible
+        # (but deny_tools still applies)
+        deny_tools:
+          - slack:delete_message
+          - slack:archive_channel
+
+# ─── Tasks ────────────────────────────────────────────────────────────
+tasks:
+  - name: fetch-pr-context
+    agent: code-analyst
+    description: >
+      Fetch the PR diff and test history for PR #${params.pr_number}.
+      Use the github MCP to get changed files, and postgres MCP to check
+      recent test results for the affected modules.
+      Output a structured summary with: changed_files, risk_areas, test_coverage_pct.
+    outputs:
+      - name: changed_files
+        type: json
+      - name: risk_areas
+        type: json
+      - name: test_coverage_pct
+        type: number
+
+  - name: write-review
+    agent: reviewer
+    needs: [fetch-pr-context]
+    description: >
+      Write a thorough code review for PR #${params.pr_number}.
+      Reference the risk areas identified in the analysis.
+      Post review comments directly on the PR using the github MCP.
+      Output a review_summary string and approval_decision (approve/request_changes/comment).
+    inputs:
+      changed_files: ${tasks.fetch-pr-context.outputs.changed_files}
+      risk_areas: ${tasks.fetch-pr-context.outputs.risk_areas}
+      test_coverage_pct: ${tasks.fetch-pr-context.outputs.test_coverage_pct}
+    outputs:
+      - name: review_summary
+        type: string
+      - name: approval_decision
+        type: string
+        enum: [approve, request_changes, comment]
+
+  - name: notify-team
+    agent: notifier
+    needs: [write-review]
+    description: >
+      Post the review summary to #eng-code-review on Slack.
+      Include the approval decision and a link to the PR.
+    inputs:
+      review_summary: ${tasks.write-review.outputs.review_summary}
+      approval_decision: ${tasks.write-review.outputs.approval_decision}
+
+# ─── Runtime ─────────────────────────────────────────────────────────
+runtime:
+  timeout: 30m
+  budget:
+    max_cost_usd: 1.00
+    on_exceed: stop
+
+# ─── Parameters ──────────────────────────────────────────────────────
+# Pass pr_number when invoking: oap run --param pr_number=1234

@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagentprotocol.dev/schemas/v0.1/agent-profile.schema.json",
+  "title": "AgentProfile",
+  "description": "Reusable agent definition with policies, lifecycle, and artifacts. Lives in the user's workspace.",
+  "type": "object",
+  "properties": {
+    "agent": {
+      "$ref": "agent.schema.json",
+      "description": "Default agent configuration. Workflows can override fields."
+    },
+    "policies": {
+      "type": "array",
+      "items": { "$ref": "policy.schema.json" },
+      "description": "Behavioral policies applied to all tasks."
+    },
+    "lifecycle": {
+      "$ref": "#/$defs/Lifecycle"
+    },
+    "artifacts": {
+      "type": "array",
+      "items": { "$ref": "artifact.schema.json" },
+      "description": "Persistent workspace artifacts."
+    }
+  },
+  "patternProperties": {
+    "^x-": { "description": "Runtime-specific extensions." }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "Lifecycle": {
+      "type": "object",
+      "properties": {
+        "phases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "properties": {
+                "actions": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                }
+              }
+            }
+          },
+          "description": "Ordered phase template. Applied to every task lifecycle."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

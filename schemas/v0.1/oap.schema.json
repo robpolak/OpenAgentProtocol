@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagentprotocol.dev/schemas/v0.1/oap.schema.json",
+  "title": "OpenAgentProtocol Document",
+  "description": "Root schema for OAP v0.1 documents. Dispatches to kind-specific schemas.",
+  "type": "object",
+  "required": ["oap_version", "kind", "metadata"],
+  "properties": {
+    "oap_version": {
+      "type": "string",
+      "const": "0.1",
+      "description": "OAP specification version."
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["Workflow", "AgentProfile", "WorkflowTemplate"],
+      "description": "Document kind."
+    },
+    "metadata": {
+      "$ref": "#/$defs/Metadata"
+    },
+    "$schema": {
+      "type": "string",
+      "description": "Optional JSON Schema reference for IDE support."
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "Workflow" } } },
+      "then": { "$ref": "workflow.schema.json" }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "AgentProfile" } } },
+      "then": { "$ref": "agent-profile.schema.json" }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "WorkflowTemplate" } } },
+      "then": { "$ref": "workflow-template.schema.json" }
+    }
+  ],
+  "additionalProperties": true,
+  "$defs": {
+    "Metadata": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "description": "Unique identifier. Lowercase, hyphens allowed."
+        },
+        "description": {
+          "type": "string"
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

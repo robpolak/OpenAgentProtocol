@@ -1,0 +1,66 @@
+oap_version: "0.1"
+kind: Workflow
+metadata:
+  name: dynamic-bug-fix
+  description: Planner generates the task DAG at runtime. Frontier model plans, cheap model executes.
+  labels:
+    example: dynamic-planning
+
+agents:
+  - name: planner
+    model_tier: frontier
+    persona:
+      role: Technical lead
+      expertise: [architecture, debugging, project-planning]
+      style:
+        autonomy: autonomous
+    tools: [shell, file_editor]
+
+  - name: engineer
+    model_tier: fast
+    max_concurrent_tasks: 2
+    tools: [shell, file_editor, test_runner]
+    permissions:
+      filesystem:
+        allow_read: ["*"]
+        allow_write: ["src/", "tests/"]
+        deny: ["**/.env"]
+
+  - name: reviewer
+    model_tier: standard
+    persona:
+      role: Code reviewer
+      expertise: [code-review, testing]
+    tools: [shell, file_editor]
+
+planning:
+  agent: planner
+  goal: "Fix the authentication bug described in ${ISSUE_URL}. Ensure all tests pass."
+  constraints:
+    max_tasks: 8
+    max_depth: 3
+    allowed_agents: [engineer, reviewer]
+    require_approval: true
+  replan_on_failure: true
+
+runtime:
+  timeout: 1h
+  max_concurrent_agents: 3
+  model_tiers:
+    frontier: claude-sonnet-4
+    standard: claude-haiku
+    fast: gpt-4o-mini
+  budget:
+    max_cost_usd: 10.00
+    on_exceed: warn
+
+build_policy:
+  strategy: on_task_complete
+  build_command: make build
+  test_command: make test
+  build_timeout: 120s
+  file_ownership:
+    conflict_resolution: first_writer_wins
+  on_failure:
+    attribution: compiler_error_mapping
+    action: notify_responsible_agent
