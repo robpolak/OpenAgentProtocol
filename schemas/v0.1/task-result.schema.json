@@ -34,6 +34,11 @@
       "type": "string",
       "description": "Error description when status is 'error' or 'partial'. REQUIRED when status != 'ok'. Should include enough context for the coordinator to decide whether to retry, escalate, or fail the workflow."
     },
+    "additional_tasks": {
+      "type": "array",
+      "items": { "$ref": "task-result-continuation.schema.json" },
+      "description": "Continuation tasks the agent wants added to the DAG. Each task is validated (known agents, no cycles, valid deps referencing existing or sibling tasks) and inserted into the live graph. Only processed when status is 'ok' or 'partial'. Runtimes MUST validate continuation tasks before adding them. If validation fails, the runtime MUST log the error and skip the invalid tasks (the parent task still completes normally)."
+    },
     "tokens_used": {
       "type": "object",
       "description": "Self-reported token usage for this task. Runtime MAY prefer its own tracked values from the transport layer if available; this field is a fallback for runtimes that don't track tokens independently.",

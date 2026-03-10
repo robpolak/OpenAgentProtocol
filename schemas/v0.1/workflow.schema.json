@@ -111,7 +111,18 @@
         "log_level": {
           "type": "string",
           "enum": ["debug", "info", "warn", "error"],
-          "default": "info"
+          "default": "info",
+          "description": "Minimum log level for structured log output."
+        },
+        "log_format": {
+          "type": "string",
+          "enum": ["json", "text"],
+          "default": "json",
+          "description": "Log output format. json emits NDJSON (one event per line). text emits human-readable output."
+        },
+        "log_dir": {
+          "type": "string",
+          "description": "Directory where per-run structured log files are written. Overrides the runtime's default log path. Supports ${ENV_VAR} interpolation. Example: ~/tmp/oa or /var/log/oap. When set, takes precedence over any user-level config. Each run writes one file named <workflow>-<timestamp>.log."
         }
       },
       "additionalProperties": true

@@ -40,6 +40,9 @@ A Level 2 runtime MUST satisfy Level 1, plus:
 - Support `on_failure` behavior (retry, skip, fail_workflow, escalate, fallback)
 - Support `fallback_task` when `on_failure: fallback`
 - Deliver task outputs to downstream tasks via `inputs`
+- Write structured NDJSON log events to a file for each run (see [OBSERVABILITY.md](./OBSERVABILITY.md))
+- Include all required log events (workflow start/complete, task start/complete/fail/skip, agent spawn/exit)
+- Accept `log_dir` as a configuration option to control where log files are written
 
 ### Level 3: Full
 

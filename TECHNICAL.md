@@ -262,10 +262,26 @@ All schemas live in `schemas/v0.1/`. Versioned by major.minor. Reference by URL 
 
 ---
 
-## Workspace Directory (`.oa/`)
+## Reference CLI (`oa`)
 
-Every project directory that uses the OAP CLI gets a `.oa/` workspace folder.
-Each plan run is stored in its own subdirectory identified by a UUID.
+The reference runtime is [OpenAgentCLI](https://github.com/robpolak/OpenAgentCLI). It installs as both `oap` and `oa` (shorthand).
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/robpolak/OpenAgentCLI/main/install.sh | sh
+```
+
+### Commands
+
+```bash
+oa plan --template software_generic   # interactive planning session, outputs .oap.yaml
+oa run workflow.oap.yaml              # execute a workflow
+oa ls                                 # list all plans and their status
+oa chat                               # design a workflow interactively
+```
+
+### Workspace Directory (`.oa/`)
+
+Every project directory that uses the CLI gets a `.oa/` workspace folder. Each plan run is stored in its own subdirectory identified by a UUID.
 
 ```
 .oa/
@@ -309,15 +325,7 @@ Each line is a JSON object. Field names mirror the OAP `event.lifecycle` protoco
 
 ### Gitignore
 
-`oa` adds `.oa/` to the user's global gitignore on first run (`~/.config/git/ignore` or `~/.gitignore_global`). The `.oa/.gitignore` inside the folder additionally ignores `state.jsonl` and `run.log` per-plan, but not `workflow.yaml` — so you can commit workflows if you choose.
-
-### CLI commands
-
-```bash
-oa plan --template software_generic   # creates .oa/{guid}/workflow.yaml
-oa ls                                 # list all plans and their status
-oa run .oa/{guid}/workflow.yaml       # execute a plan, writes state events
-```
+The CLI adds `.oa/` to the user's global gitignore on first run (`~/.config/git/ignore` or `~/.gitignore_global`). The `.oa/.gitignore` inside the folder ignores `state.jsonl` and `run.log` per-plan but not `workflow.yaml`, so you can commit workflows if you choose.
 
 ---
 

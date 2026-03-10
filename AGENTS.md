@@ -14,10 +14,17 @@ All prose in this repo follows these rules:
 - **No hype.** No "revolutionary" or "cutting-edge" or "game-changing." The tech speaks for itself.
 - **Periods over dashes.** Use periods to separate ideas. Not em dashes, not semicolons.
 - **Tables over paragraphs.** If you're listing things, use a table.
+- **Gritty manifesto, not product page.** Speak to the pain without softening it. If something in the ecosystem is broken, say it's broken. The reader is a senior engineer who has been burned by bad tooling. Write for that person.
+- **Opinionated.** Don't hedge. Don't present both sides of an engineering decision as equally valid if one is clearly better. Have a point of view and state it.
+- **Human.** Vary sentence length. Use contractions where they sound natural. Write the way you'd talk to a colleague, not the way you'd write a press release.
 
 Bad: "OAP provides a comprehensive, extensible framework that enables developers to seamlessly orchestrate multi-agent workflows across diverse runtime environments."
 
-Good: "OAP is a spec for multi-agent workflows. Write a `.oap.yaml` file, run it on any compliant runtime."
+Good: "Every team rebuilds the same coordination plumbing. OAP standardizes it."
+
+Bad: "Setting up one AI agent takes minutes. Coordinating multiple agents — with task dependencies, shared file ownership, error attribution, permission sandboxes, and cost limits — takes weeks of custom code."
+
+Good: "You've got agents. They stomp each other's files. Builds break and nobody knows whose fault it is. OAP fixes this."
 
 ## What This Repo Is
 

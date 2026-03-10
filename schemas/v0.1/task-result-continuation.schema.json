@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openagentprotocol.dev/schemas/v0.1/task-result-continuation.schema.json",
+  "title": "ContinuationTask",
+  "description": "A task declared in a TaskResult's additional_tasks array. Inserted into the live DAG after the parent task completes. Same shape as a planned task: name, agent, description, needs, file_scope, outputs, success_criteria, timeout.",
+  "type": "object",
+  "required": ["name", "agent", "description"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "description": "Task identifier. Must not collide with existing tasks in the DAG."
+    },
+    "agent": {
+      "type": "string",
+      "description": "Name of the agent assigned to this task. Must be declared in the workflow's agents array."
+    },
+    "description": {
+      "type": "string",
+      "description": "What the task does. Supports ${} interpolation from upstream outputs."
+    },
+    "needs": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Task names this task depends on. May reference existing DAG tasks or sibling continuation tasks in the same additional_tasks array."
+    },
+    "file_scope": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "File/directory paths this task is allowed to modify."
+    },
+    "outputs": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Named outputs this task will produce."
+    },
+    "success_criteria": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Human-readable conditions for task completion."
+    },
+    "timeout": {
+      "type": "string",
+      "pattern": "^[0-9]+(s|m|h)$",
+      "description": "Maximum time for this task."
+    }
+  },
+  "additionalProperties": false
+}

@@ -81,7 +81,7 @@ agents:
     persona:
       role: Technical lead and project planner
   - name: worker
-    model_tier: fast
+    model_tier: low
     tools: [shell, file_editor]
 
 planning:
@@ -150,24 +150,28 @@ Direct model identifier. Vendor-specific. Supports `${ENV_VAR}` interpolation.
 ```yaml
 agents:
   - name: planner
-    model_tier: frontier     # best available, for planning
-  - name: worker
-    model_tier: fast         # cheap and quick, for mechanical tasks
+    model_tier: frontier     # best available, for planning/architecture
+  - name: coder
+    model_tier: medium       # standard coding tasks
+  - name: formatter
+    model_tier: very_low     # mechanical tasks only
 
 runtime:
   model_tiers:
-    frontier: claude-sonnet-4
-    standard: claude-haiku
-    fast: gpt-4o-mini
-    embedding: text-embedding-3-small
+    frontier: claude-opus-4-6
+    high: claude-sonnet-4-6
+    medium: claude-sonnet-4-6
+    low: claude-haiku-4-5
+    very_low: claude-haiku-4-5
 ```
 
-| Tier | Intent | Example use |
-|---|---|---|
-| `frontier` | Best available model. Highest quality. | Planning, architecture, complex reasoning |
-| `standard` | Balanced cost and quality. | General development, code review |
-| `fast` | Cheapest viable model. | Linting, formatting, well-defined edits |
-| `embedding` | Vector/search model. | Semantic search, RAG |
+| Tier | Intent | Approx cost | Example use |
+|---|---|---|---|
+| `frontier` | Best available. Use sparingly. | ~$15/M tokens | Planning, architecture, novel reasoning |
+| `high` | High quality reasoning. | ~$3/M tokens | Complex debugging, hard implementation |
+| `medium` | Standard quality. | ~$3/M tokens | General coding, tests, refactoring |
+| `low` | Cheap with clear specs. | ~$0.25/M tokens | Mechanical tasks, well-specified edits |
+| `very_low` | Cheapest viable. | ~$0.15/M tokens | Formatting, linting, trivial transforms |
 
 **Resolution order:**
 
@@ -440,6 +444,7 @@ Schema: `schemas/v0.1/task-result.schema.json`
 | `outputs` | no | Named output values (maps to task `outputs[]`) |
 | `artifacts` | no | Files written/modified (relative to `working_dir`) |
 | `build_ready` | no | `true` = agent finished writes, ready for build epoch |
+| `additional_tasks` | no | Continuation tasks to add to the live DAG |
 | `error` | when status ≠ ok | Error description |
 | `tokens_used` | no | `{input, output}` — self-reported token counts |
 
@@ -462,6 +467,52 @@ workflow:
 ### Compatibility
 
 `output_format: stream` (default) preserves existing behavior. Runtimes that do not support structured output MUST ignore the `output_format` field and fall back to heuristic extraction. When a runtime supports `structured` mode for one runtime type (e.g., Claude Code) but not others, it MUST document this in runtime capabilities.
+
+---
+
+## Continuation Tasks
+
+An agent MAY include `additional_tasks` in its `oap-result` block to extend the DAG at runtime. This is the incremental alternative to full replanning. Use it when an agent discovers follow-on work during execution.
+
+```yaml
+# Agent emits this in its oap-result block:
+status: ok
+outputs:
+  root_cause: "token expiry not handled"
+additional_tasks:
+  - name: fix-token-refresh
+    agent: engineer
+    needs: [diagnose]
+    description: Implement token refresh logic.
+  - name: add-refresh-tests
+    agent: engineer
+    needs: [fix-token-refresh]
+    description: Add unit tests for token refresh.
+```
+
+### Rules
+
+- `additional_tasks` is OPTIONAL. When absent or empty, no DAG mutation occurs.
+- Only processed when the parent task's `status` is `ok` or `partial`. Ignored on `error`.
+- Each continuation task MUST conform to the ContinuationTask schema (`task-result-continuation.schema.json`).
+- Task names MUST NOT collide with existing tasks in the DAG. Collisions cause the invalid task to be skipped (not the entire batch).
+- `needs` MAY reference existing DAG tasks or sibling tasks within the same `additional_tasks` array.
+- `agent` MUST reference an agent declared in the workflow's `agents` array. Unknown agents cause the task to be skipped.
+- Runtimes MUST validate each continuation task before inserting it. Validation includes: name uniqueness, agent existence, dependency existence, cycle detection.
+- If a continuation task fails validation, the runtime MUST log a warning and skip that task. The parent task still completes normally.
+- Continuation tasks are added via `graph.AddTask` (live DAG insertion with topological recomputation). They participate in normal scheduling, concurrency groups, and epoch coordination.
+- There is no recursion limit on continuation tasks. A continuation task with `output_format: structured` MAY itself emit `additional_tasks`. Runtimes SHOULD enforce `planning.constraints.max_tasks` as a global ceiling if configured.
+
+### When to use continuation tasks vs replanning
+
+| Scenario | Use |
+|----------|-----|
+| Agent needs 1-3 follow-on tasks | `additional_tasks` |
+| Entire approach is wrong | `replan_on_failure` |
+| Scope discovered mid-task | `additional_tasks` |
+| Multiple tasks failed, need new strategy | `replan_on_failure` |
+
+Continuation tasks preserve all pending work in the DAG. Replanning wipes pending tasks and rebuilds from scratch.
 
 ---
 

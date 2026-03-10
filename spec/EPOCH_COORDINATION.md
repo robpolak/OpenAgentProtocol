@@ -158,6 +158,32 @@ coordinator reads from backend-2 stdout: {"type":"build.ack","source":"agent:bac
 
 Once all active agents ACK (or `ack_timeout` expires), the coordinator proceeds to BUILD.
 
+### auto_ack
+
+Some agent runtimes (e.g., subprocess coding agents that read stdin/stdout but don't
+implement the OAP message protocol) cannot parse `build.epoch_start` and respond with
+`build.ack`. Setting `auto_ack: true` on `build_policy` causes the coordinator to
+immediately ACK all agents without waiting for explicit `build.ack` messages.
+
+**This bypasses agent coordination.** Agents that would have received `build.epoch_start`
+and had a chance to flush pending writes before the build starts instead proceed with no
+acknowledgment. The build may capture a partially-written file.
+
+Runtimes MUST log `auto_ack applied` at **WARN** level (not INFO) when this path fires.
+The log entry MUST include the epoch ID and agent count. This makes the bypass visible
+in monitoring without requiring operators to know the `build_policy` config.
+
+```yaml
+# Only use auto_ack for runtimes that cannot send build.ack
+build_policy:
+  auto_ack: true  # logs WARN: "auto_ack applied" on every epoch cycle
+```
+
+Prefer `output_format: structured` with `build_ready: true` in the agent's `oap-result`
+block over `auto_ack`. When an agent emits `build_ready: true`, the coordinator marks
+that agent ready without needing an explicit ACK. This preserves the agent's ability to
+signal when it has truly finished editing.
+
 ## File Ownership Registry
 
 The coordinator maintains a runtime map of `file_path → agent_name`, built from two sources:
