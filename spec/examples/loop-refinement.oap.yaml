@@ -129,5 +129,5 @@ runtime:
 hooks:
   on_loop_iteration:
     run: "echo 'Loop iteration complete — check .oap/loop-state.json'"
-  on_loop_max_iterations_reached:
-    run: "echo 'Loop hit max iterations — review required'"
+  on_loop_max_iterations:
+    run: "echo 'Loop hit max iterations - review required'"

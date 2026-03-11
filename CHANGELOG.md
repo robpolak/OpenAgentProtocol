@@ -7,6 +7,16 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **RetryPolicy: retry_on** — filter which failure types trigger retry. Array of `crash`, `timeout`, `error`, `all`. Default: `["all"]`. Prevents retrying budget errors or logic failures when you only want to recover from crashes.
+- **RetryPolicy: inject_context** — when true (default), the runtime prepends the previous attempt's error message to the retried task's description. Agents get context about why the last attempt failed.
+
+### Changed
+- **max_attempts semantics clarified** — `max_attempts` is total execution attempts including the first run. `max_attempts: 3` = 1 original + 2 retries. Previously ambiguous.
+- **Crash and timeout route through on_failure** — agent process crashes and task timeouts now synthesize a `response.result` with `status: error` and route through `on_failure` (retry, skip, fallback, escalate). Previously, crashes left tasks stuck in running state and timeouts bypassed `on_failure` entirely.
+
+### Fixed
+- **Crash without result no longer deadlocks** — when an agent process exits without sending `response.result`, the runtime synthesizes a failure. Tasks no longer remain in running state indefinitely.
+
 - **Loop execution** — tasks and phases can now declare a `loop` block for iterative cycles.
   - `loop.max_iterations` — hard upper bound. Required.
   - `loop.exit_when` — OAP expression evaluated after each iteration. Loop exits when true.

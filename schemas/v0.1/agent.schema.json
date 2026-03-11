@@ -16,8 +16,8 @@
     },
     "model_tier": {
       "type": "string",
-      "enum": ["frontier", "high", "medium", "low", "very_low"],
-      "description": "Portable model tier. Runtime maps to a concrete model via runtime.model_tiers. frontier = best available, use sparingly for planning/architecture. high = complex reasoning, ~$3/M tokens. medium = standard coding tasks, ~$3/M tokens. low = mechanical tasks with clear specs, ~$0.25/M tokens. very_low = formatting, linting, trivial transforms, ~$0.15/M tokens. Use model: for explicit model identifiers."
+      "enum": ["frontier", "standard", "fast", "embedding"],
+      "description": "Portable model tier. Runtime maps to a concrete model via runtime.model_tiers. frontier = best available, use sparingly for planning/architecture. standard = balanced cost/quality for general tasks. fast = cheap and fast for well-defined mechanical work. embedding = embedding/search model. Use model: for explicit model identifiers."
     },
     "persona": {
       "oneOf": [

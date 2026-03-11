@@ -182,8 +182,29 @@
     "RetryPolicy": {
       "type": "object",
       "properties": {
-        "max_attempts": { "type": "integer", "minimum": 1, "default": 1 },
-        "backoff": { "type": "string", "enum": ["none", "linear", "exponential"], "default": "none" }
+        "max_attempts": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1,
+          "description": "Total execution attempts including the first run. max_attempts: 3 means the task runs at most 3 times (1 original + 2 retries)."
+        },
+        "backoff": {
+          "type": "string",
+          "enum": ["none", "linear", "exponential"],
+          "default": "none",
+          "description": "Delay strategy between retry attempts."
+        },
+        "retry_on": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["crash", "timeout", "error", "all"] },
+          "default": ["all"],
+          "description": "Which failure types trigger retry. crash = process exited without result. timeout = exceeded deadline. error = agent reported failure. all = any failure."
+        },
+        "inject_context": {
+          "type": "boolean",
+          "default": true,
+          "description": "When true, pass the failure reason from the previous attempt into the retried agent's task description."
+        }
       },
       "additionalProperties": false
     },

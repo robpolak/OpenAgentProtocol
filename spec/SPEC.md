@@ -81,7 +81,7 @@ agents:
     persona:
       role: Technical lead and project planner
   - name: worker
-    model_tier: low
+    model_tier: fast
     tools: [shell, file_editor]
 
 planning:
@@ -152,26 +152,24 @@ agents:
   - name: planner
     model_tier: frontier     # best available, for planning/architecture
   - name: coder
-    model_tier: medium       # standard coding tasks
+    model_tier: standard     # balanced cost/quality for general tasks
   - name: formatter
-    model_tier: very_low     # mechanical tasks only
+    model_tier: fast         # cheap and fast for mechanical tasks
 
 runtime:
   model_tiers:
     frontier: claude-opus-4-6
-    high: claude-sonnet-4-6
-    medium: claude-sonnet-4-6
-    low: claude-haiku-4-5
-    very_low: claude-haiku-4-5
+    standard: claude-sonnet-4-6
+    fast: gpt-4o-mini
+    embedding: text-embedding-3-small
 ```
 
 | Tier | Intent | Approx cost | Example use |
 |---|---|---|---|
 | `frontier` | Best available. Use sparingly. | ~$15/M tokens | Planning, architecture, novel reasoning |
-| `high` | High quality reasoning. | ~$3/M tokens | Complex debugging, hard implementation |
-| `medium` | Standard quality. | ~$3/M tokens | General coding, tests, refactoring |
-| `low` | Cheap with clear specs. | ~$0.25/M tokens | Mechanical tasks, well-specified edits |
-| `very_low` | Cheapest viable. | ~$0.15/M tokens | Formatting, linting, trivial transforms |
+| `standard` | Balanced cost/quality. | ~$3/M tokens | General coding, tests, refactoring |
+| `fast` | Cheap and fast. | ~$0.25/M tokens | Mechanical tasks, well-specified edits, formatting |
+| `embedding` | Embedding/search model. | ~$0.02/M tokens | Semantic search, similarity, retrieval |
 
 **Resolution order:**
 
@@ -528,6 +526,58 @@ When a budget is exceeded:
 - `stop`: Agent is halted. Task fails with budget error.
 - `fallback`: Agent switches to next model in `model_fallback` chain. If chain exhausted, stop.
 - `warn`: Log warning, continue execution.
+
+---
+
+## Failure Handling and Retry
+
+Three failure types exist:
+
+| Type | Trigger | Description |
+|---|---|---|
+| `error` | Agent sends `response.result` with `status: error` | Agent recognized the failure and reported it. |
+| `crash` | Agent process exits without sending a result | OOM, segfault, non-zero exit. Runtime synthesizes the failure. |
+| `timeout` | Task exceeds its `timeout` duration | Runtime kills the agent and synthesizes the failure. |
+
+All three types route through `on_failure`. Runtimes MUST NOT silently drop crashes or timeouts.
+
+### on_failure
+
+| Value | Behavior |
+|---|---|
+| `fail_workflow` | Task fails. Workflow fails. Default. |
+| `retry` | Re-run the task using `retry` policy. |
+| `skip` | Mark task skipped. DAG continues. |
+| `escalate` | Send `request.approval` to `escalate_to`. |
+| `fallback` | Run `fallback_task` instead. |
+
+### RetryPolicy
+
+```yaml
+retry:
+  max_attempts: 3
+  backoff: exponential
+  retry_on: [crash, timeout]
+  inject_context: true
+```
+
+**`max_attempts`**: Total execution attempts including the first run. `max_attempts: 3` means the task runs at most 3 times (1 original + 2 retries). Default: 1 (no retries).
+
+**`backoff`**: Delay between retries. `none` (immediate), `linear` (N * base), `exponential` (base * 2^N). Default: `none`.
+
+**`retry_on`**: Which failure types trigger retry. Array of `crash`, `timeout`, `error`, `all`. Default: `["all"]`. When the failure type doesn't match, the task fails immediately regardless of remaining attempts.
+
+**`inject_context`**: When true, the runtime prepends the previous attempt's error message to the task description on retry. Gives the agent context about what went wrong. Default: true.
+
+### Crash Detection
+
+When an agent process exits without sending `response.result`:
+
+1. Runtime detects closed stdin/stdout pipe or non-zero exit.
+2. Runtime synthesizes `response.result` with `status: error` and `failure_type: crash`.
+3. The synthetic result routes through `on_failure` like any other failure.
+
+Runtimes MUST NOT leave tasks in a running state after the agent process exits. This causes silent workflow deadlocks.
 
 ---
 

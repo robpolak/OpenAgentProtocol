@@ -155,6 +155,22 @@
       "additionalProperties": false
     },
 
+    "signal.artifact": {
+      "description": "Agent reports a file written or modified. Used by file registry for epoch attribution and conflict detection.",
+      "type": "object",
+      "required": ["path"],
+      "properties": {
+        "path": { "type": "string", "description": "File path relative to working_dir." },
+        "action": {
+          "type": "string",
+          "enum": ["created", "modified", "deleted"],
+          "default": "modified",
+          "description": "What happened to the file."
+        }
+      },
+      "additionalProperties": false
+    },
+
     "build.intent": {
       "description": "Agent declares intent to modify files. Build coordination extension.",
       "type": "object",

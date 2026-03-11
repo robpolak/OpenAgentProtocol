@@ -64,9 +64,14 @@ A Level 3 runtime MUST satisfy Level 2, plus:
 - Support `resource_locks` for mutual exclusion scheduling
 - Enforce `task.priority` when `queue: priority` is set on a concurrency group
 - Respect `agent.max_concurrent_tasks`
-- Enforce `output.visibility` — reject workflows where unauthorized agents interpolate restricted outputs
+- Enforce `output.visibility` -- reject workflows where unauthorized agents interpolate restricted outputs
 - Support `runtime.isolation` with at least `process` level
 - Enforce `permissions.communication` boundaries (drop unauthorized messages)
+- Support `loop` on tasks and phases (see [LOOPS.md](./LOOPS.md)): `max_iterations`, `exit_when`, context propagation, loop hooks
+- Support `mcp_servers` declaration and per-agent `permissions.mcp` enforcement
+- Support `planning` for dynamic DAG generation at runtime
+- Support `output_format: structured` and parse `TaskResult` blocks from agent output
+- Support `additional_tasks` continuation tasks emitted via structured output
 
 ## Validation Requirements
 

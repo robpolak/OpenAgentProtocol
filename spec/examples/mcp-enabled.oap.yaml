@@ -1,4 +1,4 @@
-# MCP-enabled workflow — code review with external tools.
+# MCP-enabled workflow - code review with external tools.
 #
 # Demonstrates:
 #   - workflow.mcp_servers: define connection config once
@@ -6,11 +6,14 @@
 #   - permissions.mcp.allow_tools: restrict to specific tools
 #   - permissions.mcp.deny_tools: block destructive operations
 #   - ${secrets.*} interpolation for MCP credentials
+#   - ${ENV_VAR} interpolation for runtime parameters
 #
 # Three MCP servers are declared:
 #   - github: code search, PR creation, review comments
 #   - postgres: read-only access to the test results DB
 #   - slack: post notifications (deny destructive ops)
+#
+# Usage: PR_NUMBER=1234 oap run mcp-enabled.oap.yaml
 #
 oap_version: "0.1"
 kind: Workflow
@@ -122,7 +125,7 @@ tasks:
   - name: fetch-pr-context
     agent: code-analyst
     description: >
-      Fetch the PR diff and test history for PR #${params.pr_number}.
+      Fetch the PR diff and test history for PR #${PR_NUMBER}.
       Use the github MCP to get changed files, and postgres MCP to check
       recent test results for the affected modules.
       Output a structured summary with: changed_files, risk_areas, test_coverage_pct.
@@ -138,7 +141,7 @@ tasks:
     agent: reviewer
     needs: [fetch-pr-context]
     description: >
-      Write a thorough code review for PR #${params.pr_number}.
+      Write a thorough code review for PR #${PR_NUMBER}.
       Reference the risk areas identified in the analysis.
       Post review comments directly on the PR using the github MCP.
       Output a review_summary string and approval_decision (approve/request_changes/comment).
@@ -169,6 +172,3 @@ runtime:
   budget:
     max_cost_usd: 1.00
     on_exceed: stop
-
-# ─── Parameters ──────────────────────────────────────────────────────
-# Pass pr_number when invoking: oap run --param pr_number=1234

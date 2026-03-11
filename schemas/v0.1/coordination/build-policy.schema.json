@@ -42,6 +42,11 @@
       "default": "120s",
       "description": "Max time for build_command + test_command combined."
     },
+    "auto_ack": {
+      "type": "boolean",
+      "default": false,
+      "description": "When true, agents automatically ACK epoch_start without explicit build.ack messages. Useful for single-agent workflows or when agents produce structured output with build_ready."
+    },
     "file_ownership": {
       "type": "object",
       "properties": {
